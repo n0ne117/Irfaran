@@ -47,6 +47,7 @@ Delete both caches, run a rebuild, get byte-identical output. That means the who
 - Pins with titles, colour-coded labels, tags, who you were with, and nested folders, each clearing the fog around it
 - Major and minor pins: minor ones are drawn smaller and drop out when zoomed further out than z7, so a busy area stays legible
 - Search, as you type: your own pins by title, tag, label, folder or who was there, and your tracks by name or year — or paste `27.74367, -15.58338`, or the degrees-minutes-seconds a map site gives you, and fly there with the option to keep the spot as a pin. Plus Codes too, full or short. Optionally the basemap's own place names and points of interest, read out of the archive once and searched offline. Each kind has its own switch under Settings, Search, and only pins and coordinates start on. "This view" narrows any search to what is on screen. Read-only, so it needs no token
+- Review before anything automatic reaches the map: a workout tracker or a phone hands over what it has, it waits in a holding pen, and you see each candidate on the map on its own, trim the ends, leave a leg out, rename it, then accept or discard. On by default, one switch per source under Settings, Review
 - Independent light/dark themes for the interface and the map
 
 ## Quick start
@@ -241,6 +242,41 @@ Treat HA as ambient coverage — "I was in this city, this neighbourhood" — no
 - **Appending rebuilds rather than paints on top.** A day's tiles are rebuilt from the event log each time it grows, so what live tracking produces is byte for byte what a full rebuild produces.
 - **Use a hostname reachable from the tracker**, not `localhost`. If Irfaran and HA both run in containers on one host, use the LAN address or a shared Docker network alias.
 - **Token.** Every live endpoint needs the shared token as `X-Irfaran-Token`. Overland cannot send arbitrary headers, so it may use its own `Authorization: Bearer <token>` instead — both are accepted on that endpoint.
+
+## Review before it lands
+
+A file you drop in and a line you draw are things you were already looking at. The
+automatic sources are not: intervals.icu hands over whatever was uploaded to it, and a
+phone running Overland posts wherever it has been, all day, without being asked. Both
+used to write straight into the event log, which is the truth the whole map is rebuilt
+from — so a wrong turn, a taxi ride, or a run that starts at your own front door was on
+the map before anyone had a chance to look at it, and taking it out afterwards meant
+finding the event and deleting it.
+
+Since 0.18.0 they wait instead. A badge on the map says how many batches are waiting;
+opening one shows that route by itself, with the fog and the other tracks held off, and
+nothing else on screen to read it against.
+
+- **Nothing held is in the archive.** It is not an event, it has no tiles, it cannot be
+  searched, and a backup does not carry it. Discarding one leaves nothing to find and
+  delete later, which is the whole point of the delay.
+- **Accepting is the ordinary path.** A batch accepted unchanged writes exactly the
+  events an ungated import would, down to the dedup key — so an activity imported by
+  hand afterwards is still recognised rather than drawn twice.
+- **A workout is one review.** Each activity arrives finished and is held on its own,
+  keyed so that a re-sync while it is still waiting does not stack up copies.
+- **A phone is reviewed a day at a time**, because that is the unit a live source is
+  stored in. Opening one seals it: whatever arrives next starts the following batch
+  rather than joining the one you are reading, so the set cannot move underneath you.
+- **Edits are a note on the side.** Trim the ends, leave a part out, rename it — the
+  coordinates are never rewritten, so undoing an edit is free and nothing is lost while
+  you are still deciding.
+- **Each source has its own switch** under Settings → Review. All four start on. Turning
+  one off restores exactly the old behaviour for that source.
+
+Trackers are answered normally while a batch is held — Overland in particular decides a
+batch was received by finding `{"result": "ok"}` in the reply and re-sends forever
+otherwise, and it has no way of being told that a person has to look first.
 
 ## Moving to another machine
 

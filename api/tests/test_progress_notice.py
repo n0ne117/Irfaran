@@ -147,6 +147,109 @@ class TestWiringIsFaultIsolated:
         assert self.main_source().count("wirePart(") > 5
 
 
+class TestTheReviewBadge:
+    """What is waiting has to still be there when you come back to the tab.
+
+    The one thing the badge must not be is a notice: notice() arms a timer
+    that hides good news after four seconds, and something asking for a
+    decision that quietly removes itself is the same as no badge at all.
+    """
+
+    def test_the_badge_is_not_a_self_hiding_notice(self) -> None:
+        text = source("review.ts") + source("main.ts")
+        assert "notice('review-badge')" not in text
+        assert 'notice("review-badge")' not in text
+
+    def test_the_markup_does_not_make_it_one_either(self) -> None:
+        markup = (WEB / "index.html").read_text()
+        line = next(
+            row for row in markup.splitlines() if 'id="review-badge"' in row
+        )
+        assert "notice" not in line, "a .notice is styled and treated as transient"
+
+    def test_it_is_hidden_when_nothing_can_be_decided(self) -> None:
+        # Reading the map needs no token. Offering a decision that the server
+        # will refuse is worse than not mentioning it.
+        body = body_of(source("review.ts"), "private paintBadge(")
+        assert "getToken()" in body
+        assert "hidden = true" in body
+
+
+class TestTheReviewPreview:
+    """Trimming redraws as the slider moves, so it cannot ask the server."""
+
+    def test_drawing_the_preview_makes_no_request(self) -> None:
+        body = body_of(source("review.ts"), "private redraw(")
+        for call in ("apiGet", "apiSend", "fetch("):
+            assert call not in body, (
+                f"redraw() calls {call}, so every pixel of slider travel is a "
+                "round trip"
+            )
+
+    def test_the_edit_itself_is_debounced(self) -> None:
+        body = body_of(source("review.ts"), "private later(")
+        assert "setTimeout" in body and "clearTimeout" in body
+
+    def test_a_slider_drag_redraws_locally_first(self) -> None:
+        text = source("review.ts")
+        assert "this.redraw()" in text and "this.later()" in text
+
+
+class TestReviewEditsCannotOvertakeEachOther:
+    """Two edits in flight together lost one of them.
+
+    The server reads the current edits, applies the change and writes them
+    back. Sending the trim and the unticked part as separate requests meant
+    both read the same starting point and the second silently undid the first
+    - with the panel still showing both. Found by unticking a part and then
+    renaming the batch: the part came back.
+    """
+
+    def test_a_save_carries_the_whole_decision(self) -> None:
+        body = body_of(source("review.ts"), "private async saveNow(")
+        for field in ("title", "from", "to", "dropped"):
+            assert field in body, (
+                f"a save without {field} is a fragment applied to whatever the "
+                "server happens to hold"
+            )
+
+    def test_saves_are_chained(self) -> None:
+        body = body_of(source("review.ts"), "private queue(")
+        assert "this.chain" in body and ".then(" in body
+
+    def test_accepting_sends_the_last_edit_first(self) -> None:
+        body = body_of(source("review.ts"), "private async approve(")
+        assert "await this.flush()" in body, (
+            "a trim made a quarter of a second before pressing the button "
+            "would not be part of what is accepted"
+        )
+
+
+class TestLeavingAReviewPutsTheMapBack:
+    """The sidebar hides the fog and the trails while it is open.
+
+    Every way of closing it has to restore them - the close button, the Escape
+    key, and opening Places or Settings, none of which the sidebar hears about
+    on its own.
+    """
+
+    def test_the_sheets_report_every_change(self) -> None:
+        body = body_of(source("ui.ts"), "export class Sheets {")
+        assert body.count("this.onChange()") >= 2, (
+            "open() and close() must both report, or closing sideways leaves "
+            "the map blank"
+        )
+
+    def test_main_listens_and_tells_the_review(self) -> None:
+        text = source("main.ts")
+        assert "review.closed()" in text
+        assert "'review-page'" in text, "the sidebar is not one of the sheets"
+
+    def test_closing_restores_what_was_hidden(self) -> None:
+        body = body_of(source("review.ts"), "private closeOne(")
+        assert "setRestVisible(true)" in body
+
+
 class TestTheImportLog:
     """It shows what fitted, and scrolls for the rest.
 

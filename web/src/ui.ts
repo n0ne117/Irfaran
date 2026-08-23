@@ -27,19 +27,31 @@ export function element<T extends HTMLElement>(id: string): T {
 /** Show one sheet at a time; opening one closes the others. */
 export class Sheets {
   private readonly ids: string[]
+  /**
+   * Told after every change, whichever button caused it.
+   *
+   * The review sidebar hides the rest of the map while it is open, so it has
+   * to hear about being closed by the Escape key or by somebody opening
+   * Places - not only about its own close button. Without this the map stayed
+   * blank after a review was abandoned sideways.
+   */
+  private readonly onChange: () => void
 
-  constructor(ids: string[]) {
+  constructor(ids: string[], onChange: () => void = () => {}) {
     this.ids = ids
+    this.onChange = onChange
   }
 
   open(id: string): void {
     for (const other of this.ids) {
       element(other).hidden = other !== id
     }
+    this.onChange()
   }
 
   close(): void {
     for (const id of this.ids) element(id).hidden = true
+    this.onChange()
   }
 
   toggle(id: string): void {

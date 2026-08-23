@@ -30,6 +30,7 @@ import {
   getHeatOpacity,
   openArchive,
   pmtilesProtocol,
+  setArchiveVisible,
   applyHeatOpacity,
   setBordersVisible,
   setFogOpacity,
@@ -39,6 +40,7 @@ import {
 import { Labels } from './labels'
 import { Gazetteer } from './gazetteer'
 import { Places } from './places'
+import { Review } from './review'
 import { Search } from './search'
 import { describeRemaining, runRender } from './render'
 import { Setup } from './setup'
@@ -421,6 +423,38 @@ function wireSearchSettings(): void {
     .catch(() => {})
 }
 
+/**
+ * Which automatic sources wait to be reviewed.
+ *
+ * Ordinary settings rows, like the search toggles, so the server has one way
+ * of storing a preference rather than an endpoint per feature. Painted from
+ * /api/review, which reports the gates alongside what is waiting.
+ */
+function wireReviewGates(refresh: () => void): void {
+  const status = notice('review-gates-status')
+  for (const source of ['workout', 'overland', 'owntracks', 'ha']) {
+    const box = element<HTMLInputElement>(`review-${source}`)
+    box.addEventListener('change', () => {
+      apiSend('PATCH', '/api/settings', { [`review_${source}`]: String(box.checked) })
+        .then(() => {
+          status.show(
+            box.checked
+              ? `${source} will wait to be reviewed.`
+              : `${source} will go straight onto the map.`,
+          )
+          refresh()
+        })
+        .catch((error: unknown) => {
+          box.checked = !box.checked
+          status.show(
+            error instanceof ApiError ? error.message : 'Could not save that.',
+            true,
+          )
+        })
+    })
+  }
+}
+
 function wirePart(name: string, wire: () => void): void {
   try {
     wire()
@@ -484,7 +518,12 @@ async function start(): Promise<void> {
   ;(window as unknown as { irfaran: unknown }).irfaran = handle
 
   // The sheets are mutually exclusive: opening places closes settings.
-  const sheets = new Sheets(['panel', 'places-page'])
+  //
+  // Declared before the panels that use it and told about the review sidebar
+  // afterwards, because the sidebar needs the map and the map is what this
+  // whole function is building.
+  let sheetsChanged: () => void = () => {}
+  const sheets = new Sheets(['panel', 'places-page', 'review-page'], () => sheetsChanged())
   element('panel-toggle').addEventListener('click', () => sheets.toggle('panel'))
   element('panel-close').addEventListener('click', () => sheets.close())
   element('places-toggle').addEventListener('click', () => sheets.toggle('places-page'))
@@ -670,6 +709,37 @@ async function start(): Promise<void> {
   })
   wirePart('gazetteer', () => gazetteer.wire())
   watchers.push((tab) => gazetteer.watch(tab === 'search' || tab === 'progress'))
+
+  // The holding pen. Nothing automatic reaches the map until it has been
+  // looked at, and looking at it means seeing it on its own: the fog and the
+  // trails are held off while one candidate route is on screen, and put back
+  // the moment the sidebar closes however it was closed.
+  const review = new Review(map, {
+    onOpen: () => sheets.open('review-page'),
+    onApproved: () => {
+      bustTileCache()
+      applyView(map, options)
+      void timeline.load()
+      void trails.refresh()
+    },
+    setRestVisible: (visible) => {
+      setArchiveVisible(map, visible)
+      trails.suspend(!visible)
+    },
+  })
+  sheetsChanged = () => review.closed()
+  const attachReview = () => {
+    try {
+      review.attach()
+    } catch (error) {
+      console.error('Irfaran could not attach the review layer', error)
+    }
+  }
+  map.on('style.load', attachReview)
+  if (map.isStyleLoaded()) attachReview()
+  wirePart('review', () => review.wire())
+  wirePart('review-gates', () => wireReviewGates(() => void review.load()))
+  review.watch(true)
 
   // Labels are a setting, but the pins wear them, so changing one has to
   // reach the map.

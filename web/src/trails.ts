@@ -307,6 +307,8 @@ export class Trails {
   private inView = 0
   /** What the server last sent, kept so single mode can be turned on and off. */
   private collection: TrailCollection | null = null
+  /** Held off while one route is being reviewed on its own. */
+  private suspended = false
   view = 'all'
 
   constructor(map: MapLibreMap, onStatus: (message: string) => void) {
@@ -438,7 +440,7 @@ export class Trails {
     if (!this.map.getLayer(LAYER)) return
     this.inView = inView
 
-    const chosen = getTrailStyle()
+    const chosen = this.suspended ? 'off' : getTrailStyle()
     const style =
       chosen === 'auto' ? (inView > DENSE_FROM ? 'faint' : 'detailed') : chosen
 
@@ -464,6 +466,19 @@ export class Trails {
       'line-opacity',
       faint ? FADE_IN_FAINT : FADE_IN,
     )
+  }
+
+  /**
+   * Hold the lines off, whatever the trail style says.
+   *
+   * Not a style: the style is a preference somebody set, and coming back from
+   * a review has to restore it rather than leave the map in whatever state
+   * the review needed.
+   */
+  suspend(on: boolean): void {
+    if (on === this.suspended) return
+    this.suspended = on
+    this.restyle()
   }
 
   async refresh(): Promise<void> {

@@ -218,6 +218,14 @@ DEFAULT_SETTINGS = {
     # index simply finds nothing; the Search page is where it gets built.
     "search_place_names": "false",
     "search_pois": "false",
+    # Automatic data waits to be looked at. On by default, which is the only
+    # default that fails safely: something held back and asked about can be
+    # accepted in two clicks, while something drawn onto the map unasked has
+    # to be found in the log and deleted. See review.py.
+    "review_workout": "true",
+    "review_overland": "true",
+    "review_owntracks": "true",
+    "review_ha": "true",
 }
 
 
@@ -346,9 +354,13 @@ def init(conn: sqlite3.Connection) -> None:
     # because they are an optional feature that most installs never build, and
     # keeping them together with the code that fills them keeps the reason
     # next to the shape.
-    from irfaran import gazetteer
+    from irfaran import gazetteer, review
 
     gazetteer.install(conn)
+
+    # The holding pen, for the same reason: most of what it knows is why it
+    # exists, and that reads better next to the code that fills it.
+    review.install(conn)
 
 
 def open_initialised(path: Path | str | None = None) -> sqlite3.Connection:

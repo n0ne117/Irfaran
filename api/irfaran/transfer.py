@@ -47,6 +47,15 @@ PORTABLE_SETTINGS = frozenset(
         "search_tracks",
         "search_coordinates",
         "search_plus_codes",
+        # Whether an automatic source waits to be reviewed. A preference about
+        # how careful to be, not about this machine - so it travels with the
+        # archive rather than reverting to the default on a restore. The two
+        # gazetteer switches deliberately do not: they depend on an index that
+        # exists only where it was built.
+        "review_workout",
+        "review_overland",
+        "review_owntracks",
+        "review_ha",
     }
 )
 

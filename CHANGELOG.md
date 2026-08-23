@@ -11,6 +11,27 @@ Entries are written for someone reading the release page, not for someone readin
 
 Nothing yet.
 
+## [0.18.0] - 2026-08-23
+
+### Added
+- **Nothing automatic reaches the map unreviewed.** A workout tracker hands over whatever was uploaded to it and a phone posts wherever it has been, all day, without being asked — and both went straight into the event log, which is the truth the whole map is rebuilt from. A wrong turn, a taxi ride, a run that starts at your own front door: on the map before anyone had looked at it, and removable only by finding the event and deleting it. They now wait in a holding pen instead. A badge on the map says how many batches are waiting and stays there until they are dealt with; it does not clear itself after four seconds, because something asking for a decision has to still be there when you come back to the tab.
+- **A candidate route is shown on its own.** Opening one holds the fog and the other tracks off and flies to it, so what is on screen is the line being judged and the basemap under it — over ground that is already cleared, one more white thread among hundreds is not something anyone can read. A tickbox puts the rest back for comparison.
+- **Trim the ends, leave a part out, rename it.** Two handles cut the start and the end, with the map redrawing as they move and the discarded stretch left visible, dashed, so you can see what the trim is throwing away. A batch is split where the trace jumps in time or distance, and each part can be unticked on its own — the drive to the start, the taxi home. The name is editable before it lands.
+- **Edits are a note on the side, never a rewrite.** The coordinates are stored once and left alone; what a review changes is a small document saying which range to keep and which parts to leave out. Undo is free, re-opening shows the same thing again, and there is no moment where deciding has destroyed the thing being decided about.
+- **A live source is reviewed a day at a time**, because that is the unit it is stored in. Opening one **seals** it: what the phone posts next starts the following batch rather than joining the one being read. That is the whole of the locking, and it is one column — an abandoned review or a closed browser leaves a sealed batch waiting rather than a lock nobody can clear.
+- **Settings → Review**, one switch per source. All four start on: something held back and asked about is two clicks from being accepted, while something drawn on unasked has to be hunted down in the log. Turning a switch off restores exactly the previous behaviour for that source.
+
+### Changed
+- **A tracker sync reports what it held**, not what it imported. Six activities fetched and held is "6 waiting to be reviewed" — saying "6 new" when nothing has changed on the map would be a lie.
+- **Accepting a batch defers its render to the queue**, the same as a hand-drawn stroke, and shows up under In progress like any other. That also takes a bite out of the live-ingest cost recorded in `IDEAS.md`: a live source re-stamps the whole day each time it grows, so an evening of Overland used to pay that on every batch the phone posted and now pays it once, when it is accepted.
+
+### Note
+Nothing held is in the archive: not an event, no tiles, not searchable, not in a backup. That is the promise the feature rests on, and it is asserted from several directions rather than described — no events, no blobs, nothing owing a render, and a track search that cannot see it.
+
+The one that mattered most to get right is that the gate is a **delay and not a second door**. A batch accepted unchanged goes through `ingest_tracks` or `live.append`, exactly as it would have without the pen, and a test runs the same track through both paths into two databases and compares the rows: same geometry, same radius, same layers, same dedup key. If those ever diverged, an activity imported by hand after being accepted would be drawn twice.
+
+And the listing is asserted never to read a batch's coordinates. A day of Overland is megabytes of them and the badge asks every few seconds — the same shape as the render status recomputing its job count and the gazetteer walking `dbstat`, both of which reached a real install before being noticed.
+
 ## [0.17.21] - 2026-08-21
 
 ### Changed

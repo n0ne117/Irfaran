@@ -16,7 +16,7 @@ import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
 
-from irfaran import db, geo
+from irfaran import db, geo, review
 from irfaran.ingest import live
 from irfaran.main import app
 
@@ -34,8 +34,14 @@ def client(monkeypatch):
     conn = db.open_initialised()
     conn.execute("DELETE FROM blobs")
     conn.execute("DELETE FROM events")
+    conn.execute("DELETE FROM review")
     for source in live.LIVE_SOURCES:
         live.set_enabled(conn, source, False)
+        # These tests are about the ingest path itself, so the review gate is
+        # switched off rather than worked around. With it on - which is the
+        # default - a fix waits in the holding pen instead of becoming an
+        # event, and that is test_review.py's subject, not this file's.
+        review.set_gated(conn, source, False)
     conn.close()
 
     with TestClient(app) as test_client:

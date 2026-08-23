@@ -42,7 +42,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
 from typing import Iterator
 
-from irfaran import db
+from irfaran import db, review
 from irfaran.ingest import common
 
 TRACKERS = ("intervals",)
@@ -371,6 +371,10 @@ def track_from_streams(
 class SyncResult:
     looked_at: int = 0
     imported: int = 0
+    #: Fetched and put in the holding pen rather than drawn. Counted apart
+    #: from `imported` because a sync that held six activities has changed
+    #: nothing on the map yet, and saying "6 new" would be a lie.
+    held: int = 0
     already_here: int = 0
     no_gps: int = 0
     failed: int = 0
@@ -382,6 +386,7 @@ class SyncResult:
         return {
             "looked_at": self.looked_at,
             "imported": self.imported,
+            "held": self.held,
             "already_here": self.already_here,
             "no_gps": self.no_gps,
             "failed": self.failed,
@@ -391,14 +396,18 @@ class SyncResult:
         }
 
     def summary(self) -> str:
-        if self.imported:
+        if self.held:
+            text = f"{self.held} waiting to be reviewed"
+            if self.imported:
+                text = f"{self.imported} new, {text}"
+        elif self.imported:
             text = f"{self.imported} new"
-            if self.already_here:
-                text += f", {self.already_here} already here"
         elif self.looked_at:
             text = f"nothing new in {self.looked_at} activities"
         else:
             text = "no activities in that window"
+        if self.already_here and (self.held or self.imported):
+            text += f", {self.already_here} already here"
         if self.no_gps:
             text += f", {self.no_gps} without GPS"
         if self.failed:
@@ -496,6 +505,7 @@ def sync_iter(
             "total": len(batch),
             "name": str(activity.get("name") or activity.get("type") or ""),
             "imported": result.imported,
+            "held": result.held,
             "already_here": result.already_here,
             "no_gps": result.no_gps,
             "failed": result.failed,
@@ -554,6 +564,22 @@ def _take_one(
 
     if track is None:
         result.no_gps += 1
+        return
+
+    # Held rather than drawn, when the gate is on. Nothing is rendered and
+    # nothing enters the event log: an activity waits in the pen until
+    # somebody has looked at it. See review.py.
+    if review.is_gated(conn, INGEST_SOURCE):
+        try:
+            held = review.hold_track(conn, INGEST_SOURCE, track)
+        except Exception as exc:  # noqa: BLE001
+            result.failed += 1
+            result.notes.append(f"{identifier}: {exc}")
+            return
+        if held is None:
+            result.already_here += 1
+        else:
+            result.held += 1
         return
 
     try:

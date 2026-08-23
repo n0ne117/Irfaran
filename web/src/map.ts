@@ -394,6 +394,22 @@ export function applyMapTheme(map: MapLibreMap, setup: MapSetup): void {
  * years does not reload it. Both views were rendered at ingest, so this is a
  * cache lookup away from instant.
  */
+/**
+ * Show or hide the two raster layers - the fog and the trail heat.
+ *
+ * For reviewing one route on its own. Everything Irfaran has drawn already is
+ * exactly what makes a candidate route unreadable: over ground that is
+ * already cleared, a new line is one white thread among hundreds.
+ */
+export function setArchiveVisible(map: MapLibreMap, visible: boolean): void {
+  for (const id of [TRAIL_LAYER, FOG_LAYER]) {
+    if (map.getLayer(id)) {
+      map.setLayoutProperty(id, 'visibility', visible ? 'visible' : 'none')
+    }
+  }
+}
+
+
 export function applyView(map: MapLibreMap, setup: MapSetup): void {
   for (const [id, kind] of [
     [TRAIL_SOURCE, 'trail'],

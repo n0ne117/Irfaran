@@ -190,6 +190,91 @@
       <p id="place-empty" class="hint">No pins yet. Drop one on the map.</p>
     </aside>
 
+    <!-- The holding pen. A sidebar rather than a settings tab because
+         reviewing a route means looking at it on the map, and a full-screen
+         sheet covers the thing being reviewed. -->
+    <aside id="review-page" class="sidebar" hidden>
+      <header class="sidebar-head">
+        <h1 id="review-heading">To review</h1>
+        <button id="review-close" type="button" class="icon-button" aria-label="Close review">
+          &times;
+        </button>
+      </header>
+
+      <div id="review-list-view" class="sidebar-body">
+        <p class="hint">
+          None of this is on the map yet. Automatic sources — a workout
+          tracker, a phone posting where it has been — wait here until you say
+          so. Open one to see it on the map on its own.
+        </p>
+        <div id="review-list" class="review-list"></div>
+        <p id="review-empty" class="hint" hidden>
+          Nothing is waiting. Anything the trackers fetch will appear here.
+        </p>
+        <p id="review-list-message" class="status-line" hidden></p>
+      </div>
+
+      <div id="review-one" class="sidebar-body" hidden>
+        <button id="review-back" type="button" class="linky">&lsaquo; Everything waiting</button>
+
+        <p id="review-sealed" class="hint">
+          Sealed while you look at it — anything that arrives now waits in a
+          batch of its own.
+        </p>
+
+        <table class="progress-table">
+          <tr><th>From</th><td id="review-source">—</td></tr>
+          <tr><th>When</th><td id="review-when">—</td></tr>
+          <tr><th>Points</th><td id="review-points">—</td></tr>
+          <tr><th>Distance</th><td id="review-distance">—</td></tr>
+        </table>
+
+        <label class="field">
+          <span>Name</span>
+          <input id="review-name" type="text" autocomplete="off" />
+        </label>
+
+        <h2>Trim the ends</h2>
+        <p class="hint">
+          A recording usually starts and stops somewhere you would rather not
+          draw. Drag the handles; the map follows.
+        </p>
+        <div class="review-trim">
+          <label class="review-slider">
+            <span>Start</span>
+            <input id="review-from" type="range" min="0" max="0" step="1" value="0" />
+          </label>
+          <label class="review-slider">
+            <span>End</span>
+            <input id="review-to" type="range" min="0" max="0" step="1" value="0" />
+          </label>
+        </div>
+        <p id="review-trim-note" class="hint">Nothing trimmed.</p>
+
+        <h2 id="review-parts-heading">Parts</h2>
+        <p class="hint">
+          Split where the trace jumps in time or distance. Untick one to leave
+          it out — the drive to the start, the taxi home.
+        </p>
+        <div id="review-segments" class="review-segments"></div>
+
+        <label class="check">
+          <input id="review-show-rest" type="checkbox" />
+          <span>Show the rest of the map</span>
+        </label>
+
+        <p id="review-message" class="status-line" hidden></p>
+
+        <div class="button-row">
+          <button id="review-approve" type="button" class="primary">Add to the map</button>
+          <button id="review-reset" type="button">Undo edits</button>
+        </div>
+        <div class="button-row">
+          <button id="review-discard" type="button" class="danger wide">Discard</button>
+        </div>
+      </div>
+    </aside>
+
     <!-- Settings, tabbed. -->
     <aside id="panel" class="sheet" hidden>
       <header class="sheet-head">
@@ -207,6 +292,7 @@
         <button type="button" role="tab" data-tab="backup" aria-selected="false">Backup</button>
         <button type="button" role="tab" data-tab="import" aria-selected="false">Import</button>
         <button type="button" role="tab" data-tab="sources" aria-selected="false">Data sources</button>
+        <button type="button" role="tab" data-tab="review" aria-selected="false">Review</button>
         <button type="button" role="tab" data-tab="security" aria-selected="false">Security</button>
         <button type="button" role="tab" data-tab="progress" aria-selected="false">In progress</button>
         <button type="button" role="tab" data-tab="history" aria-selected="false">History</button>
@@ -657,6 +743,58 @@
           </section>
         </div>
 
+        <div class="tab-panel" data-tab="review" hidden>
+          <section class="span-2">
+            <h2>Hold automatic data back</h2>
+            <p class="hint">
+              A file you drop in and a line you draw are things you were
+              already looking at. The automatic sources are not: a tracker
+              hands over whatever was uploaded to it, and a phone posts
+              wherever it has been all day. With a source ticked here, what it
+              sends waits to be looked at instead of going straight onto the
+              map — and what waits is
+              <button id="review-open-page" type="button" class="linky">in the review sidebar</button>.
+            </p>
+            <p class="hint">
+              Nothing held has entered the archive. Discarding one leaves no
+              trace to find and delete afterwards, which is the whole point of
+              the delay.
+            </p>
+
+            <label class="check">
+              <input id="review-workout" type="checkbox" checked />
+              <span>Workout trackers — one review per activity</span>
+            </label>
+            <label class="check">
+              <input id="review-overland" type="checkbox" checked />
+              <span>Overland</span>
+            </label>
+            <label class="check">
+              <input id="review-owntracks" type="checkbox" checked />
+              <span>OwnTracks</span>
+            </label>
+            <label class="check">
+              <input id="review-ha" type="checkbox" checked />
+              <span>Home Assistant</span>
+            </label>
+            <p class="hint">
+              Live sources are held a day at a time, because that is the unit
+              they are stored in. Opening one for review seals it: points that
+              arrive afterwards start the next batch rather than joining the
+              one you are reading.
+            </p>
+            <p id="review-gates-status" class="notice" hidden></p>
+          </section>
+
+          <section class="span-2">
+            <h2>Waiting now</h2>
+            <p id="review-waiting-line" class="status-line">Nothing is waiting.</p>
+            <div class="button-row">
+              <button id="review-review-now" type="button" class="primary">Open the review sidebar</button>
+            </div>
+          </section>
+        </div>
+
         <div class="tab-panel" data-tab="security" hidden>
           <section>
             <h2>API token</h2>
@@ -935,6 +1073,14 @@
       </div>
       <button id="timeline-next" type="button" aria-label="Next period">&rsaquo;</button>
     </div>
+
+    <!-- What is waiting to be looked at. Deliberately not a notice: a notice
+         clears itself after four seconds, and something that needs a decision
+         must still be there when you come back to the tab. -->
+    <button id="review-badge" class="review-badge" type="button" hidden>
+      <span class="review-badge-count" id="review-badge-count">0</span>
+      <span id="review-badge-text">waiting to be reviewed</span>
+    </button>
 
     <a id="version-corner" class="version-corner" rel="noreferrer">v0.0.0</a>
 

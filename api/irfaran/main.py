@@ -34,6 +34,7 @@ from irfaran import (  # noqa: I001
     history,
     gazetteer,
     renderq,
+    review,
     search,
     settings_env,
     tokens,
@@ -508,6 +509,27 @@ def _ingest_live(
         fixes, meta = live.PARSERS[source](payload, headers)
     except live.LiveError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    # Held rather than drawn, when the gate is on. The phone is answered
+    # exactly the same way - it has no idea, and must not: Overland retries a
+    # batch forever unless it is acknowledged, and "your points are waiting
+    # for a human" is not something it can be told.
+    if review.is_gated(conn, source):
+        with db.transaction(conn):
+            held = review.hold_fixes(conn, source, fixes, meta)
+
+        if held.accepted or held.duplicates:
+            history.record(
+                conn,
+                "source",
+                f"live:{source}",
+                f"{source} delivered {held.accepted} "
+                f"{'fix' if held.accepted == 1 else 'fixes'} to review"
+                + (f", {held.duplicates} already had" if held.duplicates else ""),
+                {"source": source, "accepted": held.accepted, "held": True},
+                coalesce=True,
+            )
+        return held.as_dict()
 
     with db.transaction(conn):
         result = live.append(conn, source, fixes, meta)
@@ -1188,12 +1210,157 @@ def sync_tracker(name: str, conn: sqlite3.Connection = Depends(get_conn)):
     return StreamingResponse(report(), media_type="application/x-ndjson")
 
 
-def _views_for_layers(layers: list[str]) -> list[str]:
-    views = ["all"]
-    views += sorted(f"year:{layer}" for layer in layers if layer.isdigit())
-    if common.PREHISTORY in layers:
-        views.append(common.PREHISTORY)
-    return views
+# ------------------------------------------------------------------- review
+#
+# The holding pen. Reading it needs no token, like every other read - what it
+# holds is the same kind of thing /api/trails already hands out. Deciding
+# anything about it does, because the middleware requires one on every
+# mutation and accepting a batch writes to the event log.
+
+
+def _review_error(exc: review.ReviewError) -> HTTPException:
+    # 404 when the batch is simply not there any more, which is what an open
+    # tab looking at a stale list gets, and 400 when the request itself was
+    # wrong. The difference matters to the page: one means reload, the other
+    # means the message is worth showing.
+    missing = "Nothing is waiting" in str(exc)
+    return HTTPException(status_code=404 if missing else 400, detail=str(exc))
+
+
+@app.get("/api/review")
+def review_waiting(conn: sqlite3.Connection = Depends(get_conn)) -> dict[str, object]:
+    """Everything waiting, plus which sources are gated.
+
+    Polled by the badge on the map, so it reads scalar columns only and never
+    a batch's coordinates - a day of Overland is megabytes, and the badge asks
+    every few seconds.
+    """
+    return review.overview(conn)
+
+
+@app.get("/api/review/{review_id}")
+def review_one(
+    review_id: int, conn: sqlite3.Connection = Depends(get_conn)
+) -> dict[str, object]:
+    try:
+        return review.detail(conn, review_id)
+    except review.ReviewError as exc:
+        raise _review_error(exc) from exc
+
+
+@app.post("/api/review/{review_id}/open")
+def review_open(
+    review_id: int, conn: sqlite3.Connection = Depends(get_conn)
+) -> dict[str, object]:
+    """Start reviewing: seal the batch so it cannot change while it is read."""
+    try:
+        with db.transaction(conn):
+            return review.open_for_review(conn, review_id)
+    except review.ReviewError as exc:
+        raise _review_error(exc) from exc
+
+
+@app.patch("/api/review/{review_id}")
+def review_edit(
+    review_id: int, payload: dict, conn: sqlite3.Connection = Depends(get_conn)
+) -> dict[str, object]:
+    """Change what accepting would add. Writes no event."""
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="Send an object of changes.")
+
+    allowed = {"title", "from", "to", "dropped"}
+    unknown = sorted(set(payload) - allowed)
+    if unknown:
+        raise HTTPException(
+            status_code=400,
+            detail=f"A review has no {', '.join(unknown)}. "
+            f"It has {', '.join(sorted(allowed))}.",
+        )
+
+    try:
+        with db.transaction(conn):
+            return review.edit(
+                conn,
+                review_id,
+                title=payload.get("title"),
+                begin=payload.get("from"),
+                end=payload.get("to"),
+                dropped=payload.get("dropped"),
+            )
+    except review.ReviewError as exc:
+        raise _review_error(exc) from exc
+
+
+@app.post("/api/review/{review_id}/reset")
+def review_reset(
+    review_id: int, conn: sqlite3.Connection = Depends(get_conn)
+) -> dict[str, object]:
+    try:
+        with db.transaction(conn):
+            return review.reset(conn, review_id)
+    except review.ReviewError as exc:
+        raise _review_error(exc) from exc
+
+
+@app.post("/api/review/{review_id}/approve")
+def review_approve(
+    review_id: int, conn: sqlite3.Connection = Depends(get_conn)
+) -> dict[str, object]:
+    """Accept a batch. This is the moment it becomes part of the archive.
+
+    The drawing is the queue's work, the same as a hand-drawn stroke: the
+    request returns once the events are written, and the In progress panel
+    shows the render like any other. Which matters more here than for a
+    stroke - a live source appends to the day's line, so approving an evening
+    of Overland re-stamps the whole day.
+    """
+    try:
+        with db.transaction(conn):
+            decision = review.approve(conn, review_id)
+            history.record(
+                conn,
+                "source",
+                f"review:{decision.source}",
+                f"Accepted {decision.summary()}",
+                {
+                    "source": decision.source,
+                    "points": decision.points,
+                    "left_out": decision.left_out,
+                    "events": decision.events,
+                },
+            )
+    except review.ReviewError as exc:
+        raise _review_error(exc) from exc
+
+    if decision.tiles:
+        with db.transaction(conn):
+            db.defer_render(conn, decision.tiles, views=decision.views or None)
+        renderq.queue.start(tiles_root())
+
+    return {
+        **decision.as_dict(),
+        "render_pending": len(db.pending_render(conn)),
+    }
+
+
+@app.delete("/api/review/{review_id}")
+def review_discard(
+    review_id: int, conn: sqlite3.Connection = Depends(get_conn)
+) -> dict[str, object]:
+    """Throw a batch away before it ever became an event."""
+    try:
+        with db.transaction(conn):
+            gone = review.discard(conn, review_id)
+            history.record(
+                conn,
+                "source",
+                f"review:{gone['source']}",
+                f"Discarded {gone['title']}, {gone['points']} points",
+                {"source": gone["source"], "points": gone["points"]},
+            )
+    except review.ReviewError as exc:
+        raise _review_error(exc) from exc
+    return {"discarded": gone}
 
 
 def _views_for_layers(layers: list[str]) -> list[str]:

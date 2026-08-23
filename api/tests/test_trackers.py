@@ -22,7 +22,7 @@ from datetime import datetime, timezone
 import pytest
 from fastapi.testclient import TestClient
 
-from irfaran import db, trackers
+from irfaran import db, review, trackers
 from irfaran.ingest import common, gpx
 from irfaran.main import app
 
@@ -39,7 +39,11 @@ def conn(monkeypatch):
     connection.execute("DELETE FROM events")
     connection.execute("DELETE FROM blobs")
     connection.execute("DELETE FROM pending_render")
+    connection.execute("DELETE FROM review")
     connection.execute("DELETE FROM settings WHERE key LIKE 'intervals%'")
+    # What a sync does with an activity once it has it is this file's subject;
+    # whether it is held back first is test_review.py's.
+    review.set_gated(connection, trackers.INGEST_SOURCE, False)
     connection.commit()
     yield connection
     connection.close()
@@ -72,6 +76,8 @@ def client(monkeypatch):
     connection = db.open_initialised()
     try:
         connection.execute("DELETE FROM settings WHERE key LIKE 'intervals%'")
+        connection.execute("DELETE FROM review")
+        review.set_gated(connection, trackers.INGEST_SOURCE, False)
         connection.commit()
     finally:
         connection.close()

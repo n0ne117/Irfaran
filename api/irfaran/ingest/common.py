@@ -152,6 +152,36 @@ def drop_inaccurate(
     return kept, len(fixes) - len(kept)
 
 
+def breaks(
+    fixes: list[Fix],
+    seconds: float | None = None,
+    metres: float | None = None,
+) -> list[int]:
+    """Indexes where a new segment starts, the first one always included.
+
+    The rule lives here rather than inside segment() because the review pen
+    has to talk about segments by number - "leave the drive out, keep the
+    walk" - and a second implementation of "where does a track break" would
+    eventually disagree with this one about which points belong to which.
+    """
+    if not fixes:
+        return []
+
+    limit_s = gap_seconds() if seconds is None else seconds
+    limit_m = gap_metres() if metres is None else metres
+
+    starts = [0]
+    for index, (previous, fix) in enumerate(zip(fixes, fixes[1:]), start=1):
+        jumped = haversine_m(previous.lon, previous.lat, fix.lon, fix.lat) > limit_m
+
+        if not jumped and previous.time is not None and fix.time is not None:
+            jumped = abs((fix.time - previous.time).total_seconds()) > limit_s
+
+        if jumped:
+            starts.append(index)
+    return starts
+
+
 def segment(
     fixes: list[Fix],
     seconds: float | None = None,
@@ -161,26 +191,9 @@ def segment(
     if not fixes:
         return []
 
-    limit_s = gap_seconds() if seconds is None else seconds
-    limit_m = gap_metres() if metres is None else metres
-
-    segments: list[list[Fix]] = []
-    current = [fixes[0]]
-
-    for previous, fix in zip(fixes, fixes[1:]):
-        jumped = haversine_m(previous.lon, previous.lat, fix.lon, fix.lat) > limit_m
-
-        if not jumped and previous.time is not None and fix.time is not None:
-            jumped = abs((fix.time - previous.time).total_seconds()) > limit_s
-
-        if jumped:
-            segments.append(current)
-            current = [fix]
-        else:
-            current.append(fix)
-
-    segments.append(current)
-    return segments
+    starts = breaks(fixes, seconds, metres)
+    edges = starts + [len(fixes)]
+    return [fixes[begin:end] for begin, end in zip(edges, edges[1:])]
 
 
 def expand_layers(layers: list[str] | None) -> list[str]:

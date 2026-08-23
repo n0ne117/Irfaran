@@ -63,6 +63,36 @@ Two ways out, neither started:
 Worth measuring how long a whole-day render actually takes before choosing -
 it is fine at breakfast and the problem is only at the end of a long day.
 
+**Partly overtaken in 0.18.0.** With the review gate on, a live source is not
+rendered per batch at all: the fixes wait in the holding pen and the whole-day
+re-stamp happens once, when the day is accepted. The cost is unchanged and the
+number of times it is paid went from one per batch the phone posted to one per
+day. Both routes above are still worth having - the gate can be switched off,
+and a long day accepted in one go still pays the full re-stamp - but neither is
+urgent now.
+
+## Review, the rest of it
+
+The holding pen landed in 0.18.0. What was deliberately left out:
+
+- **No bulk accept.** A button that accepts everything is the gate with extra
+  steps, and the first thing anybody with a backlog would reach for. If a
+  backlog turns out to be the normal state rather than a sign the gate is
+  wrong for that source, this changes - but it should be measured, not
+  assumed.
+- **No rules.** "Accept anything under 500 m", "always discard anything inside
+  the home radius" - each is plausible and each is a way of not looking at the
+  data, which is what the feature exists to make you do.
+- **Trimming is by point, not by place.** Two handles over the fix list, with
+  the distance removed shown as you drag. Dragging on the map itself - grab
+  the end of the line and pull it back - would be better and is a lot more
+  code.
+- **No split.** A batch can have parts left out but not be cut into two
+  separate tracks. Nothing has wanted it yet.
+- **Nothing prunes the pen.** A source left gated and never reviewed grows one
+  row a day, a few hundred KB each. Harmless for a year, and the badge is
+  hard to miss, but there is no cap and no reminder beyond the badge.
+
 ## Search: the rest of it
 
 Built: coordinates (0.17.10), your own pins and tracks (0.17.12), suggestions as

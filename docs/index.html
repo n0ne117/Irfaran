@@ -277,6 +277,9 @@
         <li>Manual tools: draw a route, clear fog without claiming one, enclose an area, or
           erase fog wrongly cleared by GPS drift</li>
         <li>Pins with titles, colour-coded labels, tags and nested folders</li>
+        <li>A review step before anything automatic reaches the map: each candidate route
+          is shown on its own, trimmed at the ends if it starts somewhere you would rather
+          not draw, and then accepted or discarded</li>
         <li>Independent light and dark themes for the interface and the map</li>
       </ul>
 
@@ -552,6 +555,14 @@ docker compose -f docker-compose.prod.yml up -d</code></pre>
 
       <p>Full setup for each is in the <a
         href="https://github.com/n0ne117/Irfaran#live-tracking-optional">README</a>.</p>
+
+      <p>
+        What a tracker sends does not go straight onto the map. It waits to be reviewed —
+        held a day at a time for a live source, one review per activity for a workout
+        tracker — and until you accept it, it is not an event, has no tiles and is not in
+        a backup. Discarding one therefore leaves nothing behind to find and delete. Each
+        source has its own switch and they all start on.
+      </p>
 
       <h2>Status</h2>
       <p>
