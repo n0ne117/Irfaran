@@ -147,6 +147,51 @@ class TestWiringIsFaultIsolated:
         assert self.main_source().count("wirePart(") > 5
 
 
+class TestHidingEveryPin:
+    """The button beside Places, and the thing it must not fight with.
+
+    Two mechanisms hide pins: this button, and a sidebar that needs the map to
+    itself while imported pins are reviewed. Sharing one class would mean
+    closing that sidebar switches the pins back on over somebody who had
+    deliberately switched them off.
+    """
+
+    def test_the_button_is_next_to_the_places_one(self) -> None:
+        markup = (WEB / "index.html").read_text()
+        places = markup.index('id="places-toggle"')
+        pins = markup.index('id="pins-toggle"')
+        assert pins > places, "the pin toggle sits before the Places button"
+        # In the same row, not somewhere else on the map.
+        tools = markup.index('class="map-tools"')
+        assert tools < places < pins
+
+    def test_the_two_reasons_to_hide_a_pin_are_separate(self) -> None:
+        text = source("places.ts")
+        suspend = body_of(text, "  suspend(on: boolean): void {")
+        preference = body_of(text, "  applyVisible(): void {")
+        assert "map-pins-suspended" in suspend
+        assert "map-pins-off" in preference
+        assert "map-pins-off" not in suspend, (
+            "the review sidebar shares the button's class, so closing it "
+            "overrides a deliberate choice"
+        )
+
+    def test_both_classes_actually_hide_something(self) -> None:
+        css = (WEB / "src" / "style.css").read_text()
+        for name in ("map-pins-off", "map-pins-suspended"):
+            assert f".{name} .place-pin" in css
+
+    def test_the_choice_survives_a_reload(self) -> None:
+        body = body_of(source("places.ts"), "export function getPinsVisible(")
+        assert "localStorage" in body
+
+    def test_it_asks_the_server_for_nothing(self) -> None:
+        for name in ("getPinsVisible(", "setPinsVisible("):
+            body = body_of(source("places.ts"), f"export function {name}")
+            for call in ("apiGet", "apiSend", "fetch("):
+                assert call not in body, f"{name} talks to the server"
+
+
 class TestThePinImportStaysHidden:
     """Asked for as a feature nobody is invited to use.
 

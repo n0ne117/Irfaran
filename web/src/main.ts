@@ -39,13 +39,13 @@ import {
 } from './map'
 import { Labels } from './labels'
 import { Gazetteer } from './gazetteer'
-import { Places } from './places'
+import { getPinsVisible, Places, setPinsVisible } from './places'
 import { PinImport, describeStaged, type StageReport } from './pinimport'
 import { Review } from './review'
 import { Search } from './search'
 import { describeRemaining, runRender } from './render'
 import { Setup } from './setup'
-import { hydrateIcons } from './icons'
+import { hydrateIcons, setIcon } from './icons'
 import { History } from './history'
 import { People } from './people'
 import { Progress } from './progress'
@@ -694,6 +694,31 @@ async function start(): Promise<void> {
   })
   wirePart('places', () => places.wire())
   void places.load()
+
+  // Every pin off and on again, beside the Places button. A viewing choice
+  // like the fog slider: nothing is asked of the server, nothing is
+  // re-rendered, and an archive full of pins can be got out of the way to look
+  // at the fog underneath. Its own state, deliberately not the one a review
+  // sidebar uses to hold the pins off - see Places.suspend.
+  wirePart('pins-toggle', () => {
+    const button = element<HTMLButtonElement>('pins-toggle')
+    const paint = () => {
+      const visible = getPinsVisible()
+      button.setAttribute('aria-pressed', String(!visible))
+      // The icon says what is on screen, and the label says what pressing it
+      // would do, which is the way round people read a toggle.
+      setIcon(button, visible ? 'eye' : 'eye-off', 17)
+      const label = visible ? 'Hide all pins' : 'Show all pins'
+      button.title = label
+      button.setAttribute('aria-label', label)
+      places.applyVisible()
+    }
+    button.addEventListener('click', () => {
+      setPinsVisible(!getPinsVisible())
+      paint()
+    })
+    paint()
+  })
 
   // Search drops a pin nobody has saved yet, so keeping one has to reach the
   // sidebar and the map the same way dropping one by hand does.

@@ -2096,10 +2096,12 @@ button:disabled {
 
 /* -------------------------------------------------------------- pin import */
 
-/* Every existing pin, held off while imported ones are reviewed on their own.
-   A class on the map container rather than removing three hundred markers and
-   putting them all back afterwards. */
-.map-pins-off .place-pin {
+/* No pins on the map. Two independent reasons for it, so two classes: the
+   button beside the Places one, and a panel that needs the map to itself while
+   imported pins are reviewed. A class on the map container rather than removing
+   three hundred markers and putting them all back afterwards. */
+.map-pins-off .place-pin,
+.map-pins-suspended .place-pin {
   display: none;
 }
 

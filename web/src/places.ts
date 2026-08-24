@@ -105,6 +105,35 @@ interface Pending {
   editing: number | null
 }
 
+const PINS_KEY = 'irfaran.pins.visible'
+
+/**
+ * Whether pins are drawn at all, in this browser.
+ *
+ * A viewing choice, like the fog slider and the country borders: it changes
+ * nothing on the server, costs no render, and is not the same thing as a
+ * folder's `visible` flag - that is a property of the folder, stored, and true
+ * for everyone looking. This is one person deciding they want to see the map
+ * underneath for a minute.
+ *
+ * On unless it was explicitly turned off, so a fresh browser shows the pins.
+ */
+export function getPinsVisible(): boolean {
+  try {
+    return window.localStorage.getItem(PINS_KEY) !== 'false'
+  } catch {
+    return true
+  }
+}
+
+export function setPinsVisible(visible: boolean): void {
+  try {
+    window.localStorage.setItem(PINS_KEY, String(visible))
+  } catch {
+    /* a preference that cannot be stored is still worth applying now */
+  }
+}
+
 export class Places {
   private readonly map: MapLibreMap
   private readonly onChanged: () => void
@@ -502,14 +531,21 @@ export class Places {
   }
 
   /**
-   * Hide every pin on the map without forgetting any of them.
+   * Hold every pin off temporarily, for a panel that needs the map to itself.
    *
-   * For reviewing imported pins on their own. A class on the map container
-   * rather than removing the markers: they are MapLibre's to position, and
-   * putting three hundred of them back afterwards is work for nothing.
+   * Its own class, separate from the one the pin button sets. Two mechanisms
+   * turning the same class on and off means closing a sidebar switches the
+   * pins back on over somebody who had deliberately switched them off - which
+   * is the sort of thing nobody notices until they have hidden three hundred
+   * pins twice.
    */
   suspend(on: boolean): void {
-    this.map.getContainer().classList.toggle('map-pins-off', on)
+    this.map.getContainer().classList.toggle('map-pins-suspended', on)
+  }
+
+  /** Apply the stored show-or-hide-everything preference. */
+  applyVisible(): void {
+    this.map.getContainer().classList.toggle('map-pins-off', !getPinsVisible())
   }
 
   private paintMarkers(): void {

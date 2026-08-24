@@ -11,6 +11,16 @@ Entries are written for someone reading the release page, not for someone readin
 
 Nothing yet.
 
+## [0.18.6] - 2026-08-24
+
+### Added
+- **A button to put every pin away**, immediately right of the Places button. An archive with a few hundred pins in it covers the thing they were dropped on, and getting them out of the way to look at the fog underneath should not mean unticking folders one at a time. The eye shows what is on screen and the label says what pressing it would do; the choice is remembered in the browser and survives a reload.
+
+  A viewing choice, like the fog slider and the country borders: nothing is asked of the server, nothing is re-rendered, and it is not the same thing as a folder's visibility — that is a property of the folder, stored, and true for anyone looking at the map.
+
+### Note
+Two things now hide pins: this button and the sidebar that holds them off while imported ones are being reviewed. They deliberately use different classes. Sharing one would mean closing that sidebar switched every pin back on over somebody who had just switched them off — the kind of thing that is invisible in review and obvious the second time it happens to you. There is a test that they stay separate.
+
 ## [0.18.5] - 2026-08-24
 
 ### Added
