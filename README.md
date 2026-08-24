@@ -42,7 +42,7 @@ Delete both caches, run a rebuild, get byte-identical output. That means the who
 - Workout trackers: intervals.icu, checked on a timer or on demand (optional, off by default)
 - GPX and TCX import
 - Per-year subdivision maps plus a cumulative all-time view
-- Manual tools: draw a route, clear fog without claiming one, enclose an area and clear all of it, or erase fog wrongly cleared by GPS drift
+- Manual tools: draw a route, clear fog without claiming one, enclose an area and clear all of it, or **Re-Fog** ground a bad GPS fix cleared by mistake — which puts the fog back and leaves the track that cleared it alone
 - Freehand and point-to-point route drawing for pre-digital history
 - Pins with titles, colour-coded labels, tags, who you were with, and nested folders, each clearing the fog around it
 - Major and minor pins: minor ones are drawn smaller and drop out when zoomed further out than z7, so a busy area stays legible

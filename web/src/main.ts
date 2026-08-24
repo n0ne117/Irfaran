@@ -206,7 +206,7 @@ const HINTS: Record<Tool, string> = {
   line: 'Click to add points, double click to finish.',
   reveal: 'Drag to clear fog without drawing a route through it.',
   area: 'Click round the edge, double click to close it.',
-  eraser: 'Drag on the map to rub fog back in.',
+  eraser: 'Drag to put the fog back. The track underneath stays.',
 }
 
 function wireDrawing(

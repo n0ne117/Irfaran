@@ -205,10 +205,14 @@ export class Draw {
   /**
    * What a stroke with the current tool does.
    *
-   * Every tool is a tool, including the eraser. A control that says "Erase"
-   * and sits away from the tool it modifies reads as a button that erases
+   * Every tool is a tool, including Re-Fog. A control that says "Erase" and
+   * sits away from the tool it modifies reads as a button that erases
    * something, which is the last thing a drawing app should be ambiguous
    * about.
+   *
+   * The op stays `erase` whatever the button says. It is in every archive and
+   * every backup ever exported from one, so the label and the wire are
+   * allowed to disagree - and the label was the part that was wrong.
    */
   get op(): Op {
     return OP_FOR[this.tool]

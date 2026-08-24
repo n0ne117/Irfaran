@@ -11,6 +11,18 @@ Entries are written for someone reading the release page, not for someone readin
 
 Nothing yet.
 
+## [0.18.1] - 2026-08-24
+
+### Changed
+- **The Eraser is now called Re-Fog**, because that is what it does. It puts the fog back over ground that should not have been cleared; it does not delete the track that cleared it. Reported as "the eraser only deletes the fog — is this a bug?" and it was not, the name was: an eraser in a drawing tool is understood to remove the thing you drew, and this one removes a claim about coverage. The button, its tooltip and the hint under the toolbar now say so, and the hint names the part that surprised somebody — the track underneath stays.
+
+  Nothing about the behaviour changed and no archive needs anything doing to it. The event op is still `erase`, in the log, in every backup ever exported and in the composite rule `fog = fog_add AND NOT fog_erase`. The label and the wire are allowed to disagree here, and there is now a test saying so, because the obvious tidy-up is to make them match and that would be a migration in exchange for nothing.
+
+- `IDEAS.md` gained a **Where you have not been** section: a route that maximises new ground, a finder for unvisited pockets enclosed by ground you have covered, a first-visit map coloured by when rather than how often, street-level coverage read out of the basemap, and a generated synthetic archive so that this application can finally be screenshotted. Also a note that the event log deserves a written specification of its meaning rather than only an implementation of it, and a recorded decision not to build anything social.
+
+### Note
+There is a real bug next to this one, left alone on purpose and worth writing down. Above z14 the crisp track lines are vector features from `/api/trails`, which selects `WHERE op = 'add'` and never looks at erase events — so the raster says a stretch is gone while the line over it says otherwise, at exactly the zoom somebody would be at while using this tool. Renaming makes that defensible rather than wrong: the track did happen, and what was retracted is the fog. Removing part of a track that has already landed is a different feature, and the editor for it already exists — it is the one 0.18.0 put in front of a batch before it lands.
+
 ## [0.18.0] - 2026-08-23
 
 ### Added

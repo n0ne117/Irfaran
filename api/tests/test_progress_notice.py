@@ -147,6 +147,34 @@ class TestWiringIsFaultIsolated:
         assert self.main_source().count("wirePart(") > 5
 
 
+class TestReFogIsOnlyALabel:
+    """The button was renamed in 0.18.1. What it writes was not.
+
+    It was called Eraser and it does not erase a track - it puts the fog back
+    and leaves the line that cleared it alone. Reported as "the eraser only
+    deletes the fog... is this a bug?", which it was not: the label was.
+
+    The op stays `erase`, because it is in every archive and every backup ever
+    exported from one. So the label and the wire are allowed to disagree, and
+    this says so - the obvious tidy-up is to make them match, and that one is
+    a migration for no gain.
+    """
+
+    def test_the_tool_still_writes_an_erase(self) -> None:
+        assert "eraser: 'erase'" in source("draw.ts")
+
+    def test_the_button_no_longer_claims_to_erase(self) -> None:
+        markup = (WEB / "index.html").read_text()
+        assert "Re-Fog" in markup
+        assert ">Eraser<" not in markup
+
+    def test_the_hint_says_the_track_survives(self) -> None:
+        # The one thing somebody reaching for this tool needs to know.
+        hint = re.search(r"eraser: '([^']*)'", source("main.ts"))
+        assert hint, "the tool has no hint at all"
+        assert "track" in hint.group(1).lower()
+
+
 class TestTheReviewBadge:
     """What is waiting has to still be there when you come back to the tab.
 

@@ -330,6 +330,99 @@ The tracker plumbing is behind a registry (`TRACKERS` in
 a second one is a client and a settings block rather than a redesign. Nothing
 specific is planned.
 
+## Where you have not been
+
+Asked for as a thought exercise, kept because there is a common thread worth
+writing down: **Irfaran is the only thing that knows where you have not
+been.** Every other mapping tool records where you went. The absence is the
+asset here, and almost nothing reads it yet. Nothing below is started.
+
+### A route that maximises new ground
+
+Compose the two entries above - snap-to-paths and a routing engine - with the
+fog, and the objective function stops being distance or elevation and becomes
+*new ground cleared per kilometre*: "a 12 km loop from here across as much
+ground as possible that I have never covered".
+
+Everything it needs is already here. The road graph is in the basemap and the
+MVT reader exists; the coverage test is a lookup against blobs already on
+disk. It is the one feature on this list that could not be lifted into another
+application, because it needs both halves - and it turns a passive record into
+something that decides where to go on a Sunday.
+
+Cost is the honest question. Route search over a road graph with a
+non-additive objective is not Dijkstra, and "a loop" makes it worse. Probably
+wants a greedy or sampled answer rather than an optimal one, which is fine:
+nobody needs the *best* loop.
+
+### The hole finder
+
+Everyone has a street ten minutes from their front door they have never once
+walked down. That is computable: connected components over the fog channel,
+filtered to holes fully enclosed by cleared ground. "Seventeen unvisited
+pockets inside the area you have covered, largest 2.1 ha."
+
+Cheap, and cheap for a good reason - it is morphology over an array that is
+already exactly the right shape, at whatever zoom makes a city fit in memory.
+Highest delight per line of code on this list.
+
+### A first-visit map
+
+The trail layer answers *how often*. Nothing answers *when first*. Same
+events, same stamping loop, `min` instead of `+=`: another blob kind holding
+the earliest timestamp per pixel, coloured by year.
+
+What comes out is not a density map, it is the shape of a life expanding - the
+childhood blob, the year the map jumps continent, the slow accretion around a
+new flat. No new sources and no new data. And it inherits the rebuild
+guarantee for free, because `min` is as order-independent as `sum`, which is
+the reason it fits this architecture and a "most recent visit" map would not.
+
+### Coverage against the basemap
+
+Thirty-three million points of interest and a roads layer, offline. So: "you
+have walked 34% of the streets in this district", computed from geometry
+already held. `Colouring visited countries` above is the same idea at the one
+scale where it is binary and therefore boring; a district fills slowly, which
+is what makes a number worth showing.
+
+### A synthetic life
+
+Aimed at a real and recurring problem: this application cannot be
+screenshotted. The repository is public, the website may show false data only,
+and every release so far has shipped without a picture of the thing it added.
+
+So generate an archive. An invented town, a home, a commute walked four
+hundred times, three summers on a coast, a decade of expansion, a couple of
+flights - enough structure that the fog reads as a life rather than as noise.
+`irfaran demo` fills an empty instance with it, and the README and the website
+get real screenshots of nobody, permanently.
+
+No architectural weight at all - it writes events through the ordinary ingest
+path and could live in the CLI beside `token`. It also doubles as the only
+honest load-test fixture for the render queue, since the shape of real
+movement is what makes a render expensive.
+
+## A written spec for the event log
+
+Not a feature. The event log is already a complete, portable, readable account
+of everywhere somebody has been, and its meaning - not its schema, its
+*meaning* - is currently defined only by the code that writes it. `db.py` has
+the columns and `composite.py` has the semantics, which is enough to
+re-implement it only if you can read Python.
+
+That is a document with a fifty-year life expectancy in a repository whose
+code has none. Worth writing down while the person who decided what `op` means
+is still available to ask.
+
+## Not doing: anything social
+
+Sharing, comparing, following, streaks, leaderboards. Recorded as a decision
+rather than an omission, because each one arrives sounding harmless and every
+one of them requires this to stop being a private record on somebody's own
+hardware. The same goes for notifications: a map that nags is a different
+product.
+
 ## Not doing: an external geocoder
 
 Nominatim, or any hosted geocoding API, for answering "where is Vienna".
