@@ -402,6 +402,40 @@ class TestTheReviewPreview:
         assert "this.redraw()" in text and "this.later()" in text
 
 
+class TestWhereADayBreaksInTheReview:
+    """A cut has to be visible, reversible, and the same one that lands."""
+
+    def test_the_gaps_carry_their_own_numbers(self) -> None:
+        body = body_of(source("review.ts"), "  private paintGaps(")
+        for shown in ("metres", "seconds", "ratio"):
+            assert shown in body, (
+                f"a gap is shown without its {shown}, so the threshold that "
+                "decided it cannot be judged"
+            )
+
+    def test_a_cut_can_be_undone_and_a_join_made(self) -> None:
+        body = body_of(source("review.ts"), "  private async toggleGap(")
+        assert "this.cuts" in body and "this.joins" in body
+
+    def test_the_two_are_kept_apart(self) -> None:
+        # Undoing the rule's cut is a join; undoing your own is deleting the
+        # cut. Collapsing them would make a join evaporate the moment the
+        # thresholds changed.
+        body = body_of(source("review.ts"), "  private async toggleGap(")
+        assert "gap.reason !== ''" in body
+
+    def test_a_save_carries_them(self) -> None:
+        body = body_of(source("review.ts"), "private async saveNow(")
+        assert "cuts:" in body and "joins:" in body
+
+    def test_parts_are_named_by_where_they_start(self) -> None:
+        # Not by ordinal: adding a cut renumbers every part after it, and a
+        # drop that quietly moved to the next part is worse than no control.
+        text = source("review.ts")
+        assert "String(segment.begin)" in text
+        assert "String(segment.index)" not in text
+
+
 class TestReviewEditsCannotOvertakeEachOther:
     """Two edits in flight together lost one of them.
 

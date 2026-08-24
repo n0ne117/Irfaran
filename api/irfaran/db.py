@@ -226,6 +226,14 @@ DEFAULT_SETTINGS = {
     "review_overland": "true",
     "review_owntracks": "true",
     "review_ha": "true",
+    # Where a day of live tracking is cut into separate stretches. Settings
+    # rather than constants because they were chosen from one archive and the
+    # next one will disagree - see the notes above live.survey for what each
+    # number is and why the time rule is off.
+    "live_split_metres": "1000",
+    "live_split_seconds": "0",
+    "live_split_ratio": "2.5",
+    "live_split_ratio_metres": "250",
 }
 
 

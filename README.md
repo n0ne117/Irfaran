@@ -238,7 +238,8 @@ Treat HA as ambient coverage — "I was in this city, this neighbourhood" — no
 - **Off by default, and refused clearly while off.** A disabled endpoint answers `503` with a message naming the toggle. It never accepts a fix silently and never returns a bare `404`, so a misconfigured tracker tells you what is wrong instead of appearing to work.
 - **Accuracy filtering is server-side and authoritative.** Fixes worse than 50 m are dropped regardless of what the client sent. Indoor and underground positions routinely report 100 m or worse and would otherwise produce fog blobs where you sat still.
 - **Sparse fixes are interpolated** as straight lines between consecutive points, so tracks cut corners rather than tracing your exact path.
-- **One track per source per day, not one event per fix.** Fixes append to that day's open track, so a day of tracking is a single event holding a growing line rather than several thousand rows and a map made of dots.
+- **One track per continuous stretch, not one event per fix.** Fixes append to the day's open stretch, so a day of tracking is a handful of events holding growing lines rather than several thousand rows and a map made of dots.
+- **A day is cut where the phone stopped reporting.** iOS suspends a tracking app and hands it back later, somewhere else; joining the two ends draws a route nobody took and clears a fog corridor along it. What decides is not distance or speed but the silence: a gap several times longer than the interval the phone had just been reporting at, covering real ground. Measured against a real archive, that flagged every invented line and none of ninety-two legitimate 250 m-plus gaps from a train at 130 km/h. All four thresholds are settings — `live_split_metres`, `live_split_ratio`, `live_split_ratio_metres` and `live_split_seconds`, the last off by default.
 - **Late and repeated batches are handled.** Points are held in time order and deduplicated on their timestamp, so a phone that spent an hour in a tunnel can deliver what it recorded in any order and still produce one continuous track. Redelivering a batch changes nothing.
 - **Appending rebuilds rather than paints on top.** A day's tiles are rebuilt from the event log each time it grows, so what live tracking produces is byte for byte what a full rebuild produces.
 - **Use a hostname reachable from the tracker**, not `localhost`. If Irfaran and HA both run in containers on one host, use the LAN address or a shared Docker network alias.
@@ -269,6 +270,7 @@ nothing else on screen to read it against.
 - **A phone is reviewed a day at a time**, because that is the unit a live source is
   stored in. Opening one seals it: whatever arrives next starts the following batch
   rather than joining the one you are reading, so the set cannot move underneath you.
+- **Cut and rejoin.** Every gap worth a decision is listed with the numbers behind it — how far, how long, how many times the usual reporting interval — and can be cut or rejoined by hand. A decision made here survives whatever the phone delivers next, and survives the thresholds being retuned.
 - **Edits are a note on the side.** Trim the ends, leave a part out, rename it — the
   coordinates are never rewritten, so undoing an edit is free and nothing is lost while
   you are still deciding.

@@ -1398,7 +1398,7 @@ def review_edit(
     if not isinstance(payload, dict):
         raise HTTPException(status_code=400, detail="Send an object of changes.")
 
-    allowed = {"title", "from", "to", "dropped"}
+    allowed = {"title", "from", "to", "dropped", "cuts", "joins"}
     unknown = sorted(set(payload) - allowed)
     if unknown:
         raise HTTPException(
@@ -1416,6 +1416,8 @@ def review_edit(
                 begin=payload.get("from"),
                 end=payload.get("to"),
                 dropped=payload.get("dropped"),
+                cuts=payload.get("cuts"),
+                joins=payload.get("joins"),
             )
     except review.ReviewError as exc:
         raise _review_error(exc) from exc

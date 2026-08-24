@@ -350,7 +350,11 @@ class TestEdits:
             review.edit(conn, held, begin=400)
 
     def test_a_part_that_is_not_there_is_refused(self, conn, held) -> None:
-        with pytest.raises(review.ReviewError, match="no part 7"):
+        # Parts are named by the fix they start at rather than by ordinal, so
+        # that adding a cut does not renumber every part after it and turn
+        # "leave part 3 out" into a drop of part 4. Point 7 is inside the only
+        # part this batch has, so nothing starts there.
+        with pytest.raises(review.ReviewError, match="starts at point 7"):
             review.edit(conn, held, dropped=[7])
 
     def test_dropping_a_part_leaves_it_out(self, conn) -> None:
@@ -389,6 +393,159 @@ class TestEdits:
         enable(client, "overland")
         post(client, 5)
         assert client.get("/api/review").status_code == 200
+
+
+def paused(before: int = 12, after: int = 12) -> list[common.Fix]:
+    """A run of fixes with one reporting pause that covers ground.
+
+    Ten seconds apart and thirteen metres apart, then forty seconds of silence
+    and six hundred metres - the shape of driving through a town while iOS has
+    decided the app can wait.
+    """
+    out: list[common.Fix] = []
+    when, lon = START, LON
+    for _ in range(before):
+        when += timedelta(seconds=10)
+        lon += 13 / 111_320.0
+        out.append(common.Fix(lon=lon, lat=LAT, time=when))
+    when += timedelta(seconds=40)
+    lon += 600 / 111_320.0
+    out.append(common.Fix(lon=lon, lat=LAT, time=when))
+    for _ in range(after - 1):
+        when += timedelta(seconds=10)
+        lon += 13 / 111_320.0
+        out.append(common.Fix(lon=lon, lat=LAT, time=when))
+    return out
+
+
+class TestWhereALiveBatchBreaks:
+    """The review has to show what will actually land, cuts included."""
+
+    @pytest.fixture
+    def held(self, conn) -> int:
+        review.hold_fixes(conn, "overland", paused())
+        return int(review.overview(conn)["items"][0]["id"])
+
+    def test_a_pause_is_a_part_boundary(self, conn, held) -> None:
+        detail = review.detail(conn, held)
+        assert len(detail["segments"]) == 2
+        assert detail["stretches"] == 2
+
+    def test_the_gap_says_why_it_cuts(self, conn, held) -> None:
+        cuts = [gap for gap in review.detail(conn, held)["gaps"] if gap["cut"]]
+        assert len(cuts) == 1
+        assert cuts[0]["reason"] == "rate"
+        assert cuts[0]["metres"] < 1000
+
+    def test_the_thresholds_come_back_with_it(self, conn, held) -> None:
+        # A number nobody can see the effect of is a number nobody can tune.
+        assert review.detail(conn, held)["thresholds"][live.SETTING_RATIO] == 2.5
+
+    def test_a_workout_still_uses_the_file_rule(self, conn) -> None:
+        review.hold_track(conn, "workout", common.Track(name="Ride", fixes=paused()))
+        held = int(review.overview(conn)["items"][0]["id"])
+        detail = review.detail(conn, held)
+        # 600 m in 40 s is neither a kilometre nor five minutes, so the file
+        # rule sees nothing - and says nothing, because gaps are a live idea.
+        assert len(detail["segments"]) == 1
+        assert detail["gaps"] == []
+
+
+class TestCuttingAndRejoiningByHand:
+    @pytest.fixture
+    def held(self, conn) -> int:
+        review.hold_fixes(conn, "overland", paused())
+        return int(review.overview(conn)["items"][0]["id"])
+
+    def test_a_join_removes_a_boundary_the_rule_found(self, conn, held) -> None:
+        detail = review.edit(conn, held, joins=[12])
+        assert len(detail["segments"]) == 1
+        assert not any(gap["cut"] for gap in detail["gaps"])
+
+    def test_a_cut_adds_one_where_the_rule_saw_nothing(self, conn, held) -> None:
+        detail = review.edit(conn, held, cuts=[5])
+        assert [segment["begin"] for segment in detail["segments"]] == [0, 5, 12]
+
+    def test_the_gap_says_a_person_decided_it(self, conn, held) -> None:
+        gaps = review.edit(conn, held, cuts=[5])["gaps"]
+        mine = [gap for gap in gaps if gap["index"] == 5]
+        # Only listed at all because somebody has an opinion about it: a
+        # thirteen metre gap is under the floor.
+        assert mine and mine[0]["by_hand"] is True and mine[0]["cut"] is True
+
+    def test_a_boundary_that_is_not_a_point_is_refused(self, conn, held) -> None:
+        with pytest.raises(review.ReviewError, match="cannot carry a cut"):
+            review.edit(conn, held, cuts=[9999])
+
+    def test_the_first_point_cannot_carry_one(self, conn, held) -> None:
+        with pytest.raises(review.ReviewError, match="cannot carry a cut"):
+            review.edit(conn, held, cuts=[0])
+
+    def test_reset_forgets_them_too(self, conn, held) -> None:
+        review.edit(conn, held, cuts=[5], joins=[12])
+        detail = review.reset(conn, held)
+        assert detail["edits"]["cuts"] == [] and detail["edits"]["joins"] == []
+        assert len(detail["segments"]) == 2
+
+    def test_a_drop_survives_an_unrelated_cut(self, conn, held) -> None:
+        review.edit(conn, held, dropped=[12])
+        detail = review.edit(conn, held, cuts=[5])
+        assert detail["edits"]["dropped"] == [12]
+        assert [s["dropped"] for s in detail["segments"]] == [False, False, True]
+
+    def test_a_drop_whose_part_stopped_existing_is_let_go(self, conn, held) -> None:
+        # Rejoining the batch means the part that was left out no longer
+        # starts anywhere. A drop pointing at nothing, with nothing on screen
+        # saying so, is worse than losing it.
+        review.edit(conn, held, dropped=[12])
+        detail = review.edit(conn, held, joins=[12])
+        assert detail["edits"]["dropped"] == []
+        assert detail["keeping"] == detail["points"]
+
+
+class TestWhatALandedBatchLooksLike:
+    def test_a_pause_lands_as_two_events(self, conn) -> None:
+        review.hold_fixes(conn, "overland", paused())
+        held = int(review.overview(conn)["items"][0]["id"])
+        decision = review.approve(conn, held)
+        assert decision.stretches == 2
+        rows = conn.execute(
+            "SELECT external_id FROM events WHERE source = 'overland' ORDER BY id"
+        ).fetchall()
+        assert [row["external_id"] for row in rows] == [
+            "live-2026-08-18",
+            "live-2026-08-18#2",
+        ]
+
+    def test_a_rejoin_by_hand_lands_as_one(self, conn) -> None:
+        # The rule wanted two. Somebody said no, and that has to stick all the
+        # way through to the event log.
+        review.hold_fixes(conn, "overland", paused())
+        held = int(review.overview(conn)["items"][0]["id"])
+        review.edit(conn, held, joins=[12])
+        assert review.approve(conn, held).stretches == 1
+        assert conn.execute(
+            "SELECT count(*) FROM events WHERE source = 'overland'"
+        ).fetchone()[0] == 1
+
+    def test_a_cut_by_hand_lands_as_two(self, conn) -> None:
+        review.hold_fixes(conn, "overland", fixes(24))
+        held = int(review.overview(conn)["items"][0]["id"])
+        assert len(review.detail(conn, held)["segments"]) == 1
+        review.edit(conn, held, cuts=[12])
+        assert review.approve(conn, held).stretches == 2
+
+    def test_a_dropped_middle_does_not_join_across_itself(self, conn) -> None:
+        # Leaving a part out opens a hole, and joining across it would draw
+        # exactly the straight line the drop was about.
+        review.hold_fixes(conn, "overland", paused())
+        held = int(review.overview(conn)["items"][0]["id"])
+        review.edit(conn, held, cuts=[6], dropped=[6])
+        review.approve(conn, held)
+        rows = conn.execute(
+            "SELECT geometry FROM events WHERE source = 'overland'"
+        ).fetchall()
+        assert len(rows) == 2
 
 
 class TestApproving:

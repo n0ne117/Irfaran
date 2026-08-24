@@ -268,6 +268,14 @@ def _day_of(fixes: list[common.Fix]) -> str:
 # ------------------------------------------------------------------- the edits
 
 
+#: Gaps narrower than this are not worth listing. A day of dense fixes has
+#: hundreds of them and none of them is a decision.
+GAP_FLOOR_M = 100.0
+
+#: How many gaps a review will talk about, widest first.
+GAP_LIMIT = 60
+
+
 @dataclass
 class Edits:
     """What a review decided to change, before it decided to accept it."""
@@ -277,7 +285,14 @@ class Edits:
     #: so a batch that grows does not silently re-trim itself.
     begin: int = 0
     end: int = -1
+    #: Segments left out, named by the index of the fix each one starts at.
+    #: Not by ordinal: adding a cut renumbers every segment after it, and a
+    #: "leave part 3 out" that quietly became part 4 is worse than no control.
     dropped: tuple[int, ...] = ()
+    #: Extra stretch boundaries a person added, where the rule saw nothing.
+    cuts: tuple[int, ...] = ()
+    #: Boundaries the rule found and a person disagreed with.
+    joins: tuple[int, ...] = ()
 
     @classmethod
     def load(cls, raw: str | None) -> "Edits":
@@ -289,11 +304,17 @@ class Edits:
             return cls()
         if not isinstance(stored, dict):
             return cls()
+
+        def indexes(key: str) -> tuple[int, ...]:
+            return tuple(sorted({int(item) for item in stored.get(key) or ()}))
+
         return cls(
             title=str(stored.get("title") or ""),
             begin=int(stored.get("from") or 0),
             end=int(stored.get("to", -1)),
-            dropped=tuple(sorted({int(item) for item in stored.get("dropped") or ()})),
+            dropped=indexes("dropped"),
+            cuts=indexes("cuts"),
+            joins=indexes("joins"),
         )
 
     def dump(self) -> str:
@@ -303,21 +324,53 @@ class Edits:
                 "from": self.begin,
                 "to": self.end,
                 "dropped": list(self.dropped),
+                "cuts": list(self.cuts),
+                "joins": list(self.joins),
             },
             separators=(",", ":"),
         )
 
     @property
     def touched(self) -> bool:
-        return bool(self.title) or self.begin > 0 or self.end >= 0 or bool(self.dropped)
+        return (
+            bool(self.title)
+            or self.begin > 0
+            or self.end >= 0
+            or bool(self.dropped)
+            or bool(self.cuts)
+            or bool(self.joins)
+        )
 
 
-def apply_edits(fixes: list[common.Fix], edits: Edits) -> list[common.Fix]:
-    """The fixes a review would actually add.
+def detected_breaks(
+    conn: sqlite3.Connection, source: str, fixes: list[common.Fix]
+) -> list[int]:
+    """Where the rule thinks this batch breaks, before anybody argues.
 
-    Segments are numbered off the untouched list, so trimming the ends and
-    leaving a segment out are independent of each other and of the order they
-    were decided in. Trimming that empties a segment simply empties it.
+    Live sources use the live rule, which is deliberately not the file rule:
+    what breaks a phone's day is that it stopped reporting, and that is not
+    the same measurement as a gap in a recorded file. See live.survey.
+    """
+    if source in live.LIVE_SOURCES:
+        return live.cut_points(fixes, live.thresholds(conn))
+    return [index for index in common.breaks(fixes) if index > 0]
+
+
+def effective_breaks(detected: Iterable[int], edits: Edits) -> list[int]:
+    """The boundaries that count: found, plus added, minus argued away."""
+    return sorted(
+        (set(detected) | set(edits.cuts)) - set(edits.joins) - {0}
+    )
+
+
+def kept_indexes(
+    fixes: list[common.Fix], edits: Edits, breaks: Iterable[int]
+) -> list[int]:
+    """Which fixes a review would actually add, by index.
+
+    Segments are named by the fix they start at, so trimming the ends, leaving
+    a segment out and moving a boundary are independent of each other and of
+    the order they were decided in.
     """
     if not fixes:
         return []
@@ -327,34 +380,72 @@ def apply_edits(fixes: list[common.Fix], edits: Edits) -> list[common.Fix]:
     end = last if edits.end < 0 else max(begin, min(edits.end, last))
 
     if not edits.dropped:
-        return fixes[begin : end + 1]
+        return list(range(begin, end + 1))
 
-    owner = segment_of(fixes)
+    owner = segment_of(fixes, breaks)
     return [
-        fix
-        for index, fix in enumerate(fixes)
-        if begin <= index <= end and owner[index] not in edits.dropped
+        index
+        for index in range(begin, end + 1)
+        if owner[index] not in edits.dropped
     ]
 
 
-def segment_of(fixes: list[common.Fix]) -> list[int]:
-    """Which segment each fix belongs to, by index."""
+def apply_edits(
+    fixes: list[common.Fix], edits: Edits, breaks: Iterable[int] = ()
+) -> list[common.Fix]:
+    """The fixes a review would actually add."""
+    return [fixes[index] for index in kept_indexes(fixes, edits, breaks)]
+
+
+def segment_of(fixes: list[common.Fix], breaks: Iterable[int]) -> list[int]:
+    """Which segment each fix belongs to, named by the fix that starts it."""
+    starts = {index for index in breaks if 0 < index < len(fixes)}
     owner = [0] * len(fixes)
-    number = -1
-    starts = set(common.breaks(fixes))
+    current = 0
     for index in range(len(fixes)):
         if index in starts:
-            number += 1
-        owner[index] = number
+            current = index
+        owner[index] = current
     return owner
 
 
-def segment_ranges(fixes: list[common.Fix]) -> list[tuple[int, int]]:
+def segment_ranges(
+    fixes: list[common.Fix], breaks: Iterable[int]
+) -> list[tuple[int, int]]:
     """Each segment as an inclusive [first, last] index pair."""
     if not fixes:
         return []
-    edges = common.breaks(fixes) + [len(fixes)]
+    edges = [0, *sorted({b for b in breaks if 0 < b < len(fixes)}), len(fixes)]
     return [(begin, end - 1) for begin, end in zip(edges, edges[1:])]
+
+
+def boundary_stamps(
+    fixes: list[common.Fix], kept: list[int], breaks: Iterable[int]
+) -> set[str]:
+    """Timestamps of the fixes that start a stretch, in what will be added.
+
+    Every boundary the review decided on, plus every hole trimming or dropping
+    opened up - a batch with its middle segment left out is two stretches, and
+    joining them would draw the straight line the drop was about.
+
+    The first kept fix is deliberately not one. Whether a batch joins the
+    stretch already sitting in the archive is not a decision this review made
+    or could make: it is about the space between two things, only one of which
+    was on screen. That call belongs to the rule, at the moment it lands.
+
+    Timestamps rather than indexes because these have to survive the journey
+    into live.append, where they are indexes into a different list.
+    """
+    starts = {index for index in breaks}
+    out: set[str] = set()
+    previous: int | None = None
+    for index in kept:
+        if previous is not None and (index != previous + 1 or index in starts):
+            stamp = _stamp(fixes[index])
+            if stamp is not None:
+                out.add(stamp)
+        previous = index
+    return out
 
 
 # --------------------------------------------------------------- holding back
@@ -660,17 +751,23 @@ def detail(conn: sqlite3.Connection, review_id: int) -> dict[str, object]:
     per pixel is not that. The edits are applied there and here, and approving
     applies them again from the stored document - so what the map shows is a
     preview of a decision, never the decision itself.
+
+    The gaps come with it, carrying the numbers the split was decided on. A
+    threshold nobody can see the effect of is a threshold nobody can tune.
     """
     row = _row(conn, review_id)
+    source = str(row["source"])
     fixes = _decode(row["fixes"])
     edits = Edits.load(row["edits"])
-    kept = apply_edits(fixes, edits)
+
+    found = detected_breaks(conn, source, fixes)
+    breaks = effective_breaks(found, edits)
+    kept = kept_indexes(fixes, edits, breaks)
 
     segments = []
-    for number, (begin, end) in enumerate(segment_ranges(fixes)):
+    for number, (begin, end) in enumerate(segment_ranges(fixes, breaks)):
         part = fixes[begin : end + 1]
-        stamps = [_stamp(fix) for fix in part]
-        dated = [stamp for stamp in stamps if stamp]
+        dated = [stamp for stamp in (_stamp(fix) for fix in part) if stamp]
         segments.append(
             {
                 "index": number,
@@ -680,7 +777,7 @@ def detail(conn: sqlite3.Connection, review_id: int) -> dict[str, object]:
                 "metres": length_m(part),
                 "first_at": dated[0] if dated else None,
                 "last_at": dated[-1] if dated else None,
-                "dropped": number in edits.dropped,
+                "dropped": begin in edits.dropped,
             }
         )
 
@@ -689,15 +786,69 @@ def detail(conn: sqlite3.Connection, review_id: int) -> dict[str, object]:
         "meta": json.loads(row["meta"] or "{}"),
         "fixes": json.loads(row["fixes"]),
         "segments": segments,
+        "gaps": _gaps(source, fixes, found, edits, breaks),
         "edits": {
             "title": edits.title,
             "from": edits.begin,
             "to": edits.end,
             "dropped": list(edits.dropped),
+            "cuts": list(edits.cuts),
+            "joins": list(edits.joins),
         },
         "keeping": len(kept),
-        "keeping_metres": length_m(kept),
+        "keeping_metres": length_m([fixes[index] for index in kept]),
+        "stretches": len(segment_ranges(fixes, breaks)),
+        "thresholds": live.thresholds(conn)
+        if source in live.LIVE_SOURCES
+        else {},
     }
+
+
+def _gaps(
+    source: str,
+    fixes: list[common.Fix],
+    found: Iterable[int],
+    edits: Edits,
+    breaks: Iterable[int],
+) -> list[dict[str, object]]:
+    """The gaps worth talking about, in the order they happen.
+
+    Every one that cuts, every one a person has an opinion about, and the
+    widest of the rest - so a gap the rule missed can be promoted to a cut
+    without hunting for it on the map. Capped, because a day of dense fixes
+    has hundreds and none of the narrow ones is a decision.
+    """
+    if source not in live.LIVE_SOURCES:
+        return []
+
+    seen = set(found)
+    opinions = set(edits.cuts) | set(edits.joins)
+    cutting = set(breaks)
+
+    rows: list[dict[str, object]] = []
+    for gap in live.survey(fixes):
+        interesting = (
+            gap.index in seen
+            or gap.index in opinions
+            or gap.metres >= GAP_FLOOR_M
+        )
+        if not interesting:
+            continue
+        rows.append(
+            {
+                **gap.as_dict(),
+                "cut": gap.index in cutting,
+                "by_hand": gap.index in opinions,
+            }
+        )
+
+    if len(rows) > GAP_LIMIT:
+        # Widest first for the cut, then back into order, so what is dropped is
+        # the narrow tail rather than the end of the day.
+        keep = sorted(rows, key=lambda row: -float(row["metres"]))[:GAP_LIMIT]
+        order = {id(row) for row in keep}
+        rows = [row for row in rows if id(row) in order]
+    return rows
 
 
 # ------------------------------------------------------------------- deciding
@@ -724,6 +875,8 @@ def edit(
     begin: int | None = None,
     end: int | None = None,
     dropped: Iterable[int] | None = None,
+    cuts: Iterable[int] | None = None,
+    joins: Iterable[int] | None = None,
 ) -> dict[str, object]:
     """Change what approving would add. Nothing enters the log here."""
     row = _row(conn, review_id)
@@ -746,20 +899,56 @@ def edit(
             "each other."
         )
 
+    fixes = _decode(row["fixes"])
+    found = detected_breaks(conn, str(row["source"]), fixes)
+
+    if cuts is not None:
+        current.cuts = _boundaries(cuts, total, "cut")
+    if joins is not None:
+        current.joins = _boundaries(joins, total, "join")
+
     if dropped is not None:
-        count = len(segment_ranges(_decode(row["fixes"])))
+        starts = {begin for begin, _ in segment_ranges(
+            fixes, effective_breaks(found, current)
+        )}
         chosen = sorted({int(item) for item in dropped})
-        for number in chosen:
-            if not 0 <= number < count:
+        for index in chosen:
+            if index not in starts:
                 raise ReviewError(
-                    f"There is no part {number} in this batch - it has {count}."
+                    f"No part of this batch starts at point {index}. Reload the "
+                    "review - the parts moved when a cut did."
                 )
         current.dropped = tuple(chosen)
+
+    # A part that no longer starts anywhere cannot stay left out: moving a
+    # boundary would otherwise leave a drop pointing at nothing, and nothing
+    # on screen would say so.
+    starts = {begin for begin, _ in segment_ranges(
+        fixes, effective_breaks(found, current)
+    )}
+    current.dropped = tuple(index for index in current.dropped if index in starts)
 
     conn.execute(
         "UPDATE review SET edits = ? WHERE id = ?", (current.dump(), review_id)
     )
     return detail(conn, review_id)
+
+
+def _boundaries(values: Iterable[int], total: int, what: str) -> tuple[int, ...]:
+    """Fix indexes that may carry a boundary: anything but the first point."""
+    out: set[int] = set()
+    for value in values:
+        try:
+            index = int(value)
+        except (TypeError, ValueError) as exc:
+            raise ReviewError(f"A {what} is a point number.") from exc
+        if not 0 < index < max(total, 1):
+            raise ReviewError(
+                f"Point {index} cannot carry a {what} - this batch has "
+                f"{total} points, and a stretch cannot start before the first."
+            )
+        out.add(index)
+    return tuple(sorted(out))
 
 
 def _index(value: object, total: int, what: str) -> int:
@@ -792,6 +981,9 @@ class Decision:
     skipped: int = 0
     points: int = 0
     left_out: int = 0
+    #: How many continuous stretches it went in as. More than one means the
+    #: phone stopped reporting somewhere in the middle.
+    stretches: int = 0
     tiles: set[tuple[int, int]] = field(default_factory=set)
     views: list[str] = field(default_factory=list)
 
@@ -804,6 +996,7 @@ class Decision:
             "skipped": self.skipped,
             "points": self.points,
             "left_out": self.left_out,
+            "stretches": self.stretches,
             "tiles_touched": len(self.tiles),
             "views": self.views,
         }
@@ -829,7 +1022,9 @@ def approve(conn: sqlite3.Connection, review_id: int) -> Decision:
     source = str(row["source"])
     fixes = _decode(row["fixes"])
     edits = Edits.load(row["edits"])
-    kept = apply_edits(fixes, edits)
+    breaks = effective_breaks(detected_breaks(conn, source, fixes), edits)
+    keeping = kept_indexes(fixes, edits, breaks)
+    kept = [fixes[index] for index in keeping]
 
     if not kept:
         raise ReviewError(
@@ -850,8 +1045,15 @@ def approve(conn: sqlite3.Connection, review_id: int) -> Decision:
         # The live path owns its own dedup and re-stamps the day's line, so
         # approving twice - or approving a second batch for a day that already
         # has one - merges rather than duplicating.
-        outcome = live.append(conn, source, kept, meta)
-        decision.events = 1 if outcome.accepted else 0
+        outcome = live.append(
+            conn,
+            source,
+            kept,
+            meta,
+            breaks_at=boundary_stamps(fixes, keeping, breaks),
+        )
+        decision.events = outcome.stretches or (1 if outcome.accepted else 0)
+        decision.stretches = outcome.stretches
         decision.tiles = set(outcome.tiles_touched)
         decision.views = _views_of_event(conn, outcome.event_id)
     else:

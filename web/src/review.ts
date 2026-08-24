@@ -68,13 +68,42 @@ interface Segment {
   dropped: boolean
 }
 
+/** One space between consecutive fixes, and what was decided about it. */
+interface Gap {
+  index: number
+  metres: number
+  seconds: number | null
+  ratio: number | null
+  /** Why the rule wanted a cut here, or '' if it did not. */
+  reason: string
+  cut: boolean
+  by_hand: boolean
+}
+
 interface Detail extends Waiting {
   /** [lon, lat, ISO 8601 | null] per point, exactly as it was received. */
   fixes: [number, number, string | null][]
   segments: Segment[]
-  edits: { title: string; from: number; to: number; dropped: number[] }
+  gaps: Gap[]
+  edits: {
+    title: string
+    from: number
+    to: number
+    dropped: number[]
+    cuts: number[]
+    joins: number[]
+  }
   keeping: number
   keeping_metres: number
+  stretches: number
+}
+
+/** Why the rule cut here, in words rather than in a keyword. */
+function describeReason(reason: string): string {
+  if (reason === 'rate') return 'it stopped reporting'
+  if (reason === 'distance') return 'too far apart'
+  if (reason === 'time') return 'too long a silence'
+  return 'cut by hand'
 }
 
 export function formatDistance(metres: number): string {
@@ -133,6 +162,9 @@ export class Review {
   private settle: number | undefined
   /** Saves run one after another. See queue(). */
   private chain: Promise<void> = Promise.resolve()
+  /** Boundaries added and removed by hand, mirrored so a save carries them. */
+  private cuts = new Set<number>()
+  private joins = new Set<number>()
   private watching = false
 
   constructor(
@@ -382,6 +414,8 @@ export class Review {
     element('review-distance').textContent = formatDistance(detail.metres)
 
     element<HTMLInputElement>('review-name').value = detail.title
+    this.cuts = new Set(detail.edits.cuts)
+    this.joins = new Set(detail.edits.joins)
 
     const last = Math.max(0, detail.points - 1)
     const from = element<HTMLInputElement>('review-from')
@@ -391,7 +425,88 @@ export class Review {
     from.value = String(Math.min(detail.edits.from, last))
     to.value = String(detail.edits.to < 0 ? last : Math.min(detail.edits.to, last))
 
+    this.paintGaps(detail)
     this.paintSegments(detail)
+  }
+
+  /**
+   * Every gap worth a decision, with the numbers it was decided on.
+   *
+   * A phone stops reporting and starts again somewhere else; joining the two
+   * ends draws a route nobody took and clears fog along it. The rule decides,
+   * and this is where it can be overruled either way - which matters because
+   * the thresholds were chosen from one archive and will be wrong for some
+   * other one.
+   */
+  private paintGaps(detail: Detail): void {
+    const host = element('review-gaps')
+    host.textContent = ''
+
+    const shown = detail.gaps.length > 0
+    for (const id of ['review-gaps', 'review-gaps-heading', 'review-gaps-hint']) {
+      element(id).hidden = !shown
+    }
+    if (!shown) return
+
+    const cuts = detail.gaps.filter((gap) => gap.cut).length
+    element('review-gaps-heading').textContent =
+      cuts === 0
+        ? 'Where it breaks — nowhere'
+        : cuts === 1
+          ? 'Where it breaks — one place'
+          : `Where it breaks — ${cuts} places`
+
+    for (const gap of detail.gaps) {
+      const row = document.createElement('div')
+      row.className = 'review-gap'
+      row.dataset.cut = String(gap.cut)
+      row.dataset.byHand = String(gap.by_hand)
+
+      const text = document.createElement('span')
+      const headline = document.createElement('strong')
+      headline.textContent = formatDistance(gap.metres)
+      const detailLine = document.createElement('span')
+      detailLine.className = 'review-gap-detail'
+      const parts: string[] = []
+      if (gap.seconds !== null) parts.push(`${Math.round(gap.seconds)} s`)
+      if (gap.ratio !== null) parts.push(`${gap.ratio.toFixed(1)}× the usual`)
+      parts.push(gap.cut ? describeReason(gap.reason) : 'joined')
+      detailLine.textContent = ` — ${parts.join(' · ')}`
+      text.append(headline, detailLine)
+
+      const button = document.createElement('button')
+      button.type = 'button'
+      button.textContent = gap.cut ? 'Rejoin' : 'Cut'
+      button.title = gap.cut
+        ? 'Draw the line straight across this gap after all'
+        : 'Stop the line being drawn across this gap'
+      button.addEventListener('click', () => void this.toggleGap(gap))
+
+      row.append(text, button)
+      host.append(row)
+    }
+  }
+
+  /** Cut a gap the rule joined, or rejoin one it cut. */
+  private async toggleGap(gap: Gap): Promise<void> {
+    // A boundary the rule found is removed by disagreeing with it; one it did
+    // not find is removed by taking back the disagreement. Keeping the two
+    // apart is what lets the thresholds change later without silently
+    // overruling somebody - a join stays a join, whatever the rule now thinks.
+    const byRule = gap.reason !== ''
+    if (gap.cut) {
+      this.cuts.delete(gap.index)
+      if (byRule) this.joins.add(gap.index)
+    } else {
+      this.joins.delete(gap.index)
+      if (!byRule) this.cuts.add(gap.index)
+    }
+
+    await this.flush()
+    if (this.current) {
+      this.paintOne(this.current)
+      this.redraw()
+    }
   }
 
   private paintSegments(detail: Detail): void {
@@ -430,7 +545,7 @@ export class Review {
       text.append(strong, rest)
 
       label.append(box, text)
-      label.dataset.index = String(segment.index)
+      label.dataset.index = String(segment.begin)
       host.append(label)
     }
   }
@@ -491,7 +606,7 @@ export class Review {
     const owner = new Map<number, number>()
     for (const segment of detail.segments) {
       for (let index = segment.begin; index <= segment.end; index += 1) {
-        owner.set(index, segment.index)
+        owner.set(index, segment.begin)
       }
     }
 
@@ -679,6 +794,8 @@ export class Review {
       from,
       to,
       dropped: [...this.dropped],
+      cuts: [...this.cuts],
+      joins: [...this.joins],
     }
 
     try {
@@ -696,6 +813,8 @@ export class Review {
     const detail = this.current
     if (!detail) return
     try {
+      this.cuts.clear()
+      this.joins.clear()
       const fresh = await apiSend<Detail>('POST', `/api/review/${detail.id}/reset`)
       this.current = fresh
       this.paintOne(fresh)

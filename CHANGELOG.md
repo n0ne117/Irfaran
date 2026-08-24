@@ -11,6 +11,29 @@ Entries are written for someone reading the release page, not for someone readin
 
 Nothing yet.
 
+## [0.18.8] - 2026-08-24
+
+### Fixed
+- **A day of live tracking is no longer drawn as one unbroken line.** When a phone stops reporting — iOS suspending the app, a tunnel, a flat battery — and starts again somewhere else, joining the two ends claims a route nobody took, and the raster clears a twenty-metre fog corridor along it.
+
+  `common.segment` has always cut file imports where the trace jumps, and its own comment says exactly why: *"A tracker that stops logging over lunch and resumes across town would otherwise draw a straight line through everything between."* The live path never called it. Every day of Overland, OwnTracks and Home Assistant since the beginning has been stored as one LineString from the first fix to the last. A day is now **one event per continuous stretch**.
+
+### Added
+- **A rule that catches the case distance cannot.** Reported as jumps while driving through a town, under a kilometre — and no distance threshold catches those without also cutting a train, which at 130 km/h sampling every eleven seconds covers four hundred metres per fix, ninety-two times in one day. Speed cannot separate them either: in a real archive the 4.9 km invented line implied 118 km/h and twenty-eight perfectly good fixes implied more.
+
+  What separates them is that the phone **stopped reporting**. A gap several times longer than the interval it had just been reporting at, covering real ground, is a pause whatever distance it happens to span. The default of 2.5× was read off a measured distribution rather than picked: across 92 gaps over 250 m, ninety sat between 0.91× and 1.10× and the two invented lines sat at 6.91× and 13.45×, with nothing at all in between. The town case measures 3.6×.
+
+- **Cut and rejoin, by hand, in the review.** Every gap worth a decision is listed with the numbers it was decided on — how far, how long, how many times the usual interval, and why it cut. Rejoin one the rule got wrong, or cut one it left joined. A decision made here is carried through to the event log by timestamp rather than by index, so it survives the batch landing behind a stretch that is already there.
+
+- **All four thresholds are settings**, because they were chosen from one archive and the next one will disagree: `live_split_metres` (1000), `live_split_ratio` (2.5), `live_split_ratio_metres` (250) and `live_split_seconds`, which is **off**. On a real day the time rule made nine cuts covering eighty-six metres in total — a phone sitting on a desk. Splitting there costs events and buys nothing, because nothing moved.
+
+### Note
+Nothing needs migrating. The first stretch of a day keeps the key a whole day used to have, so every event written before this is already stretch one of its day and only ever gains neighbours. **History is never re-split**: an existing stretch is left exactly as it is and only the join to it is judged, because a boundary can be somebody's decision and the next batch the phone delivers must not undo a rejoin. The cost is that a late fix landing inside an old gap does not merge the stretches either side of it — which is what the rejoin control is for, and a better trade than silently overruling a person.
+
+The test that matters reads a fog tile halfway across a 4.9 km jump and asserts nothing is cleared there — then switches the thresholds off, posts the same batch, and asserts that it is. Everything else is downstream of that.
+
+Parts in the review are now named by the fix they start at rather than by ordinal. Adding a cut renumbers every part after it, and a "leave part three out" that quietly became part four is worse than no control at all.
+
 ## [0.18.7] - 2026-08-24
 
 ### Fixed

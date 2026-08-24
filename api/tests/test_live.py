@@ -209,6 +209,7 @@ class TestOverland:
             "duplicates": 10,
             "dropped": 0,
             "event_id": None,
+            "stretches": 0,
             "tiles_touched": 0,
         }
         assert explored(client, 5) == before

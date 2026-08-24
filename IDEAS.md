@@ -63,6 +63,12 @@ Two ways out, neither started:
 Worth measuring how long a whole-day render actually takes before choosing -
 it is fine at breakfast and the problem is only at the end of a long day.
 
+**Largely overtaken in 0.18.8**, which cut a day into one event per
+continuous stretch. Appending now re-stamps only the stretch that grew, not
+the whole day - which is the first of the two routes below, arrived at from a
+different direction. What is left of the problem is a single long unbroken
+stretch, where the cost is still proportional to the whole of it.
+
 **Partly overtaken in 0.18.0.** With the review gate on, a live source is not
 rendered per batch at all: the fixes wait in the holding pen and the whole-day
 re-stamp happens once, when the day is accepted. The cost is unchanged and the

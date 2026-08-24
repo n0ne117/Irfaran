@@ -2193,3 +2193,56 @@ kbd {
   font-family: ui-monospace, 'SFMono-Regular', Menlo, monospace;
   font-size: 0.72rem;
 }
+
+/* ------------------------------------------------------- where a day breaks */
+
+.review-gaps {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  margin-top: 0.4rem;
+}
+
+.review-gap {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.3rem 0.4rem;
+  border: 1px solid var(--line);
+  border-radius: 0.25rem;
+  font-size: 0.76rem;
+}
+
+/* Cut: the line is not drawn across it. Marked rather than merely described,
+   because which way round it is is the whole question. */
+.review-gap[data-cut='true'] {
+  border-color: var(--warn);
+}
+
+.review-gap-detail {
+  color: var(--muted);
+  font-size: 0.7rem;
+}
+
+.review-gap button {
+  padding: 0.2rem 0.45rem;
+  border: 1px solid var(--line);
+  border-radius: 0.25rem;
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  font-size: 0.72rem;
+  cursor: pointer;
+}
+
+.review-gap button:hover {
+  border-color: var(--accent);
+}
+
+/* Somebody overruled the rule here. Worth showing, because the next thing to
+   wonder is why this one is different. */
+.review-gap[data-by-hand='true'] .review-gap-detail::after {
+  content: ' · by hand';
+  color: var(--accent);
+}
