@@ -147,6 +147,61 @@ class TestWiringIsFaultIsolated:
         assert self.main_source().count("wirePart(") > 5
 
 
+class TestTheDropCursor:
+    """Reported as "sometimes it shows the pin with the cursor and sometimes not".
+
+    The teardrop is a stylesheet rule on the canvas. The drawing tools write
+    their cursor to the same element inline, and inline wins - so opening the
+    drawing toolbar once and closing it again left `cursor: grab` on the canvas
+    for the rest of the page load, and Drop a pin armed correctly while looking
+    exactly like panning.
+
+    The "sometimes" was real rather than imagined: hovering a track sets the
+    cursor to pointer and leaving it sets the inline value back to empty
+    string, which handed the rule its cursor back until the next tool was
+    picked. So it worked, then stopped, then worked again, depending on where
+    the mouse had been.
+
+    Source-level, like everything else in this file - there is no test runner
+    for the TypeScript, and a cursor is exactly the kind of fault that is
+    invisible until somebody is using the thing.
+    """
+
+    def test_the_rule_it_relies_on_still_exists(self) -> None:
+        css = (WEB / "src" / "style.css").read_text()
+        assert "[data-dropping='true']" in css
+        assert "cursor:" in css[css.index("[data-dropping='true']") :][:400]
+
+    def test_arming_takes_the_cursor_and_remembers_it(self) -> None:
+        body = body_of(source("places.ts"), "  private armDrop(): void {")
+        assert "borrowedCursor" in body, "nothing remembers what it displaced"
+        assert "style.cursor = ''" in body, (
+            "an inline cursor left in place beats the stylesheet, which is the "
+            "whole bug"
+        )
+
+    def test_disarming_hands_it_back(self) -> None:
+        body = body_of(source("places.ts"), "  private disarmDrop(): void {")
+        assert "style.cursor = this.borrowedCursor" in body
+
+    def test_every_way_out_hands_it_back(self) -> None:
+        # Escape and clicking the map are the two exits, and both have to
+        # restore - so both go through the one method that does.
+        text = source("places.ts")
+        assert text.count("this.disarmDrop()") >= 2
+        assert "this.dropping) this.disarmDrop()" in text
+
+    def test_a_track_does_not_steal_it_mid_drop(self) -> None:
+        text = source("trails.ts")
+        for handler in ("mouseenter", "mouseleave"):
+            start = text.index(f"'{handler}', HIT_LAYER")
+            block = text[start : start + 500]
+            assert "dataset.dropping" in block, (
+                f"the {handler} handler writes the cursor without checking "
+                "whether a pin is being placed"
+            )
+
+
 class TestHidingEveryPin:
     """The button beside Places, and the thing it must not fight with.
 

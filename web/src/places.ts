@@ -146,6 +146,8 @@ export class Places {
   private markers = new Map<number, Marker>()
   private pending: Pending | null = null
   private dropping = false
+  /** Whatever inline cursor the canvas had before a drop was armed. */
+  private borrowedCursor = ''
   private collapsed = new Set<number>()
 
   constructor(map: MapLibreMap, onChanged: () => void) {
@@ -207,13 +209,39 @@ export class Places {
 
   // -------------------------------------------------------------- dropping
 
+  /**
+   * Arm the drop, and take the cursor off whoever was holding it.
+   *
+   * The teardrop cursor is a stylesheet rule on the canvas, and the drawing
+   * tools write theirs to the same element inline - which wins, always. So
+   * opening the drawing toolbar once and closing it again left `cursor: grab`
+   * on the canvas for the rest of the page load, and from then on Drop a pin
+   * armed correctly and looked exactly like panning.
+   *
+   * Reported as "sometimes it shows the pin with the cursor and sometimes
+   * not", and the sometimes was real: hovering a track sets the cursor to
+   * pointer and leaving it sets the inline value back to empty string, which
+   * handed the rule its cursor back until the next tool was picked.
+   *
+   * Rather than an !important, or teaching two modules about each other, the
+   * inline value is borrowed for the duration and handed back on the way out.
+   * Both exits go through disarmDrop, so there is one place to hand it back.
+   */
   private armDrop(): void {
+    if (!this.dropping) {
+      this.borrowedCursor = this.map.getCanvas().style.cursor
+      this.map.getCanvas().style.cursor = ''
+    }
     this.dropping = true
     element('map').dataset.dropping = 'true'
     this.say('Click the map to place the pin. Escape to stop.')
   }
 
   private disarmDrop(): void {
+    if (this.dropping) {
+      this.map.getCanvas().style.cursor = this.borrowedCursor
+      this.borrowedCursor = ''
+    }
     this.dropping = false
     delete element('map').dataset.dropping
     this.say('')

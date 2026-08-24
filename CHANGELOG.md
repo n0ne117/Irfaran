@@ -11,6 +11,22 @@ Entries are written for someone reading the release page, not for someone readin
 
 Nothing yet.
 
+## [0.18.7] - 2026-08-24
+
+### Fixed
+- **Drop a pin now always shows the pin cursor.** Reported as "sometimes it shows the pin with the cursor and sometimes not", and the *sometimes* was real rather than imagined.
+
+  The teardrop cursor is a stylesheet rule on the map canvas. The drawing tools write their cursor to the same element as an inline style, and an inline style beats a stylesheet rule every time — so **opening the drawing toolbar once and closing it again** left `cursor: grab` on the canvas for the rest of the page load. From then on Drop a pin armed perfectly correctly and looked exactly like panning, which is why the mode itself never seemed broken.
+
+  What made it intermittent was the trail layer: hovering a track sets the cursor to a pointer and leaving one sets the inline value back to an empty string, which handed the stylesheet its cursor back until the next tool was picked. So it worked, stopped, and started working again depending on where the mouse had been.
+
+  Placing a pin now borrows the inline cursor for as long as the mode lasts and hands back exactly what it took — `grab` if the hand tool was selected, `crosshair` if a drawing tool was, nothing if nothing was. Both ways out of the mode, Escape and clicking the map, go through the one place that restores it. And hovering a track no longer takes the cursor while a pin is being placed, because what the cursor is saying is what the next click will do, and the next click drops a pin wherever it lands — including on top of a track.
+
+### Note
+No `!important`, and no module taught about another one. Two things writing to the same property is the actual fault; the fix is that the one with a mode borrows it and gives it back, which is also the only version that works when a drawing tool is armed rather than merely having been armed once.
+
+Guarded by tests that read the source, like the rest of the client behaviour here — a cursor is invisible until somebody is using the thing, and this one had been wrong since the drawing tools landed.
+
 ## [0.18.6] - 2026-08-24
 
 ### Added

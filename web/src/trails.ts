@@ -379,9 +379,14 @@ export class Trails {
       this.map.on('click', HIT_LAYER, (event) => this.identify(event as never))
       this.map.on('mouseenter', HIT_LAYER, () => {
         if (!getTrailPopups() || getTrailStyle() === 'off') return
+        // Not while a pin is being placed. The cursor is saying what the next
+        // click will do, and the next click drops a pin wherever it lands -
+        // including on top of a track.
+        if (this.map.getContainer().dataset.dropping === 'true') return
         this.map.getCanvas().style.cursor = 'pointer'
       })
       this.map.on('mouseleave', HIT_LAYER, () => {
+        if (this.map.getContainer().dataset.dropping === 'true') return
         this.map.getCanvas().style.cursor = ''
       })
     }
