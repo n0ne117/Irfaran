@@ -278,6 +278,31 @@ Trackers are answered normally while a batch is held — Overland in particular 
 batch was received by finding `{"result": "ok"}` in the reply and re-sends forever
 otherwise, and it has no way of being told that a person has to look first.
 
+## Importing pins from another application
+
+Not offered anywhere in the interface, on purpose. Drop a SQLite file with a
+`places` table — `name`, `lat`, `lng`, `category_id` — and a `categories` table
+into the file picker under Settings → Import, and the pins in it are staged for
+review rather than added. A sidebar opens showing them on an otherwise empty
+map, one at a time; `Enter` keeps one, `Del` discards it, and **Done** closes
+the import once every one has been decided.
+
+Nothing staged is in the archive until you keep it: no pin, no event, no tiles,
+and nothing in a backup.
+
+The source file's category is read as **who was there**, not as a kind of
+place. It is split on `&`, `and`, `+` and commas and each part matched against
+the people registry, so `Ana & Bo` assigns both. A category that names no
+person can be mapped explicitly:
+
+```bash
+curl -X PATCH localhost:8000/api/settings -H "X-Irfaran-Token: $IRFARAN_TOKEN" -H 'content-type: application/json' -d '{"pin_import_people": "{\"Everyone\": [\"Ana\", \"Bo\"]}"}'
+```
+
+Kept pins arrive minor, unlabelled, and in prehistory — the only date such a
+file usually carries is when the pin was typed in, which is not when anybody
+was there. All three are changeable per pin while reviewing.
+
 ## Moving to another machine
 
 Settings → Backup exports one file holding everything that cannot be derived: the event

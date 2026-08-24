@@ -282,6 +282,72 @@
       </div>
     </aside>
 
+    <!-- Reviewing pins imported from another application's database.
+         Reached only by dropping such a file into the Import picker: there is
+         no button for this anywhere, on purpose. See pinimport.py. -->
+    <aside id="pin-import-page" class="sidebar" hidden>
+      <header class="sidebar-head">
+        <h1>Imported pins</h1>
+        <button id="pin-import-close" type="button" class="icon-button" aria-label="Close">
+          &times;
+        </button>
+      </header>
+
+      <div class="sidebar-body">
+        <p class="hint">
+          None of these are on the map yet. Look at each one, then keep it or
+          throw it away. <kbd>Enter</kbd> keeps, <kbd>Del</kbd> discards, and
+          both move to the next.
+        </p>
+        <p id="pin-import-count" class="status-line">—</p>
+
+        <div id="pin-import-editor" class="pin-editor" hidden>
+          <p id="pin-import-decided" class="hint" hidden></p>
+
+          <label class="field">
+            <span>Name</span>
+            <input id="pin-import-name" type="text" autocomplete="off" />
+          </label>
+
+          <table class="progress-table">
+            <tr><th>Where</th><td id="pin-import-where">—</td></tr>
+            <tr><th>Called</th><td id="pin-import-category">—</td></tr>
+          </table>
+
+          <h2>Who was there</h2>
+          <div id="pin-import-people" class="pin-people"></div>
+
+          <div class="field-pair">
+            <label class="field">
+              <span>Label</span>
+              <select id="pin-import-label"></select>
+            </label>
+            <label class="field">
+              <span>Prominence</span>
+              <select id="pin-import-prominence">
+                <option value="minor">Minor</option>
+                <option value="major">Major</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="button-row">
+            <button id="pin-import-save" type="button" class="primary">Keep (Enter)</button>
+            <button id="pin-import-discard" type="button" class="danger">Discard (Del)</button>
+          </div>
+        </div>
+
+        <p id="pin-import-message" class="status-line" hidden></p>
+        <div id="pin-import-list" class="pin-list"></div>
+      </div>
+
+      <div class="sidebar-actions">
+        <button id="pin-import-done" type="button" class="primary wide" disabled>
+          Done
+        </button>
+      </div>
+    </aside>
+
     <!-- Settings, tabbed. -->
     <aside id="panel" class="sheet" hidden>
       <header class="sheet-head">
@@ -662,7 +728,7 @@
               something you already have changes nothing, so it is safe to
               select everything at once.
             </p>
-            <input id="import-file" type="file" accept=".gpx,.tcx" multiple hidden />
+            <input id="import-file" type="file" accept=".gpx,.tcx,.db" multiple hidden />
             <button id="import-button" type="button" class="wide primary">Choose files</button>
             <div id="import-progress-row" class="progress-row" hidden>
               <progress id="import-progress" max="1" value="0"></progress>

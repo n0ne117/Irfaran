@@ -11,6 +11,26 @@ Entries are written for someone reading the release page, not for someone readin
 
 Nothing yet.
 
+## [0.18.5] - 2026-08-24
+
+### Added
+- **Pins can be imported out of another application's database**, reviewed one at a time, and kept or thrown away. There is nothing in the interface that offers this and there is not meant to be: the file picker under Import accepts the file, the server recognises it by its shape rather than its name, and this paragraph is the only place it is mentioned. A one-off for anyone who has a few hundred pins somewhere else and reads release notes.
+
+  What it reads is a small SQLite database with a `places` table — name, `lat`, `lng`, `category_id` — and a `categories` table. Anything else is refused with a reason rather than half-imported, and the file is opened read-only: it is somebody's other application's data and there is no version of this that writes to it.
+
+- **The category is read as who was there, not as what kind of place it is.** In the database this was written for, the categories were people and pairs of people. So a category is split on `&`, `and`, `+` and commas, and each part matched against the people registry — one name assigns one person, `Andrea & Alex` assigns both. A part matching nobody assigns nobody and is reported rather than invented, because attaching a name that does not exist is worse than attaching none. A category that names no person and never will — `Family` — can be mapped by hand through the `pin_import_people` setting, which is data rather than code precisely because the answer is somebody's own family.
+
+- **A sidebar of its own for the review.** The fog, the tracks *and* the pins already on the map are all held off, so what is on screen is the pin being judged and the basemap under it — a new pin among three hundred existing ones is not something anyone can read. Clicking a row flies to it and opens name, who was there, label and prominence; the coordinates are shown but not editable. <kbd>Enter</kbd> keeps, <kbd>Del</kbd> discards, and both advance to the next, because three hundred decisions with a mouse is a different afternoon from three hundred with a keyboard. **Done** appears only when nothing is left waiting, and then forgets the lot.
+
+  Kept pins arrive **minor**, so a few hundred of them do not become a wall of markers at every zoom, and **with no label** — both changeable per pin while reviewing. They land in **prehistory**: the only date in such a file is when the pin was typed, which is not when anybody was there, and filing them under it would claim a decade of travel happened over one spring.
+
+### Note
+Nothing staged is in the archive: no `places` row, no event, no tiles, not searchable, not in a backup. Keeping one runs `places.create`, the same call the sidebar makes when a pin is dropped by hand, so a pin that came out of another application is not a second kind of pin with slightly different rules. Each one defers its render to the queue rather than paying for it, which is what keeps a long sitting from waiting on the pyramid between keystrokes.
+
+Two bugs found by the tests rather than by using it. The file's category was being handed to the pin validator, which checks it against Irfaran's own category vocabulary — so renaming a pin whose category was `Restaurants` failed with a complaint about a field the edit had not touched. And a label id pointing at nothing raised out of the wrong exception type, which would have been a 500 in the middle of a review rather than a message.
+
+The test fixture is a database built in the test, not a committed file: `*.db` is in `.gitignore`, so a fixture would have been invisible to git and mysteriously absent in CI — and a real one is a map to somebody's front door.
+
 ## [0.18.1] - 2026-08-24
 
 ### Changed

@@ -29,6 +29,7 @@ from irfaran import (  # noqa: I001
     composite,
     db,
     organise,
+    pinimport,
     places,
     raster,
     history,
@@ -1208,6 +1209,135 @@ def sync_tracker(name: str, conn: sqlite3.Connection = Depends(get_conn)):
             own.close()
 
     return StreamingResponse(report(), media_type="application/x-ndjson")
+
+
+# --------------------------------------------------------------- pin import
+#
+# Not advertised anywhere in the interface. The file picker under Import takes
+# the file, this recognises it by its shape, and the rest is in the release
+# notes. See pinimport.py.
+
+
+def _pin_error(exc: pinimport.PinImportError) -> HTTPException:
+    missing = "Nothing is waiting under" in str(exc)
+    return HTTPException(status_code=404 if missing else 400, detail=str(exc))
+
+
+@app.post("/api/import/pins")
+async def import_pins(
+    file: UploadFile, conn: sqlite3.Connection = Depends(get_conn)
+) -> dict[str, object]:
+    """Read another application's places database into the staging table.
+
+    Nothing becomes a pin here. Three hundred pins arriving unexamined is the
+    thing the holding pen exists to prevent, and a pin is a claim about
+    somewhere somebody was.
+    """
+    payload = await file.read()
+
+    def work() -> dict[str, object]:
+        with db.transaction(conn):
+            # One import at a time. Two files staged together would be one
+            # undifferentiated list, and Done clears all of it.
+            outstanding = pinimport.waiting(conn)
+            if outstanding["total"]:
+                raise pinimport.PinImportError(
+                    f"{outstanding['total']} pins from an earlier import are "
+                    "still open. Finish that one first."
+                )
+            staged = pinimport.stage(conn, payload)
+            history.record(
+                conn,
+                "manual",
+                "pins",
+                f"Read {file.filename or 'a places database'}: {staged.summary()}",
+                staged.as_dict(),
+            )
+        return staged.as_dict()
+
+    try:
+        return await run_in_threadpool(work)
+    except pinimport.PinImportError as exc:
+        raise _pin_error(exc) from exc
+
+
+@app.get("/api/import/pins")
+def list_staged_pins(
+    conn: sqlite3.Connection = Depends(get_conn),
+) -> dict[str, object]:
+    return pinimport.waiting(conn)
+
+
+@app.post("/api/import/pins/done")
+def finish_pin_import(
+    conn: sqlite3.Connection = Depends(get_conn),
+) -> dict[str, object]:
+    """Close the import. Refused while anything is still undecided."""
+    try:
+        with db.transaction(conn):
+            result = pinimport.done(conn)
+            history.record(
+                conn,
+                "manual",
+                "pins",
+                f"Finished importing pins: {result['saved']} kept, "
+                f"{result['discarded']} discarded",
+                result,
+            )
+        return result
+    except pinimport.PinImportError as exc:
+        raise _pin_error(exc) from exc
+
+
+@app.patch("/api/import/pins/{pin_id}")
+def edit_staged_pin(
+    pin_id: int, payload: dict, conn: sqlite3.Connection = Depends(get_conn)
+) -> dict[str, object]:
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="Send an object of changes.")
+    try:
+        with db.transaction(conn):
+            return pinimport.edit(conn, pin_id, payload)
+    except pinimport.PinImportError as exc:
+        raise _pin_error(exc) from exc
+
+
+@app.post("/api/import/pins/{pin_id}/save")
+def save_staged_pin(
+    pin_id: int, conn: sqlite3.Connection = Depends(get_conn)
+) -> dict[str, object]:
+    """Commit one pin to the archive, deferring the fog it clears.
+
+    Deferred rather than rendered here because there are three hundred of
+    these to get through: one render each would make every keystroke wait on
+    the pyramid, while the queue coalesces the whole sitting into one pass.
+    """
+    try:
+        with db.transaction(conn):
+            done = pinimport.save(conn, pin_id)
+    except pinimport.PinImportError as exc:
+        raise _pin_error(exc) from exc
+
+    if done.tiles:
+        with db.transaction(conn):
+            db.defer_render(conn, done.tiles, views=_views_for_layers(done.layers))
+        renderq.queue.start(tiles_root())
+
+    return {
+        **done.as_dict(),
+        "render_pending": len(db.pending_render(conn)),
+    }
+
+
+@app.post("/api/import/pins/{pin_id}/discard")
+def discard_staged_pin(
+    pin_id: int, conn: sqlite3.Connection = Depends(get_conn)
+) -> dict[str, object]:
+    try:
+        with db.transaction(conn):
+            return pinimport.discard(conn, pin_id)
+    except pinimport.PinImportError as exc:
+        raise _pin_error(exc) from exc
 
 
 # ------------------------------------------------------------------- review

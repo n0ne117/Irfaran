@@ -2093,3 +2093,101 @@ button:disabled {
 .danger:hover:not(:disabled) {
   background: color-mix(in srgb, var(--bad) 12%, transparent) !important;
 }
+
+/* -------------------------------------------------------------- pin import */
+
+/* Every existing pin, held off while imported ones are reviewed on their own.
+   A class on the map container rather than removing three hundred markers and
+   putting them all back afterwards. */
+.map-pins-off .place-pin {
+  display: none;
+}
+
+.pin-editor {
+  padding: 0.6rem 0.7rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 0.4rem;
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+}
+
+.pin-editor h2 {
+  margin: 0.8rem 0 0.2rem;
+  font-size: 0.85rem;
+}
+
+.pin-people {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2rem 0.9rem;
+}
+
+.pin-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  margin-top: 0.8rem;
+}
+
+.pin-row {
+  display: grid;
+  grid-template-columns: 1rem 1fr auto;
+  align-items: baseline;
+  gap: 0.4rem;
+  padding: 0.3rem 0.4rem;
+  border: 1px solid transparent;
+  border-radius: 0.25rem;
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  font-size: 0.8rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.pin-row:hover {
+  border-color: var(--accent);
+}
+
+.pin-row-current {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
+.pin-row-mark {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.pin-row-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pin-row-detail {
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.pin-row-saved .pin-row-mark {
+  color: var(--accent);
+}
+
+/* Decided against. Struck through rather than removed, so the list somebody is
+   working down does not renumber itself under them. */
+.pin-row-discarded {
+  opacity: 0.5;
+}
+
+.pin-row-discarded .pin-row-name {
+  text-decoration: line-through;
+}
+
+kbd {
+  padding: 0.05rem 0.25rem;
+  border: 1px solid var(--line);
+  border-radius: 0.2rem;
+  background: var(--panel);
+  font-family: ui-monospace, 'SFMono-Regular', Menlo, monospace;
+  font-size: 0.72rem;
+}

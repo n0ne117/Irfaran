@@ -354,13 +354,16 @@ def init(conn: sqlite3.Connection) -> None:
     # because they are an optional feature that most installs never build, and
     # keeping them together with the code that fills them keeps the reason
     # next to the shape.
-    from irfaran import gazetteer, review
+    from irfaran import gazetteer, pinimport, review
 
     gazetteer.install(conn)
 
     # The holding pen, for the same reason: most of what it knows is why it
     # exists, and that reads better next to the code that fills it.
     review.install(conn)
+
+    # Where pins imported from another application wait to be looked at.
+    pinimport.install(conn)
 
 
 def open_initialised(path: Path | str | None = None) -> sqlite3.Connection:

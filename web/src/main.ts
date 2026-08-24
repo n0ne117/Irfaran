@@ -10,7 +10,7 @@ import {
   watchLifecycle,
   wireDiagnostics,
 } from './diagnostics'
-import { ApiError, apiGet, apiSend } from './api'
+import { ApiError, apiGet, apiSend, getToken } from './api'
 import { Brush } from './brush'
 import { Draw, MIN_DRAW_ZOOM, type Tool } from './draw'
 import { Backup } from './backup'
@@ -40,6 +40,7 @@ import {
 import { Labels } from './labels'
 import { Gazetteer } from './gazetteer'
 import { Places } from './places'
+import { PinImport, describeStaged, type StageReport } from './pinimport'
 import { Review } from './review'
 import { Search } from './search'
 import { describeRemaining, runRender } from './render'
@@ -523,7 +524,10 @@ async function start(): Promise<void> {
   // afterwards, because the sidebar needs the map and the map is what this
   // whole function is building.
   let sheetsChanged: () => void = () => {}
-  const sheets = new Sheets(['panel', 'places-page', 'review-page'], () => sheetsChanged())
+  const sheets = new Sheets(
+    ['panel', 'places-page', 'review-page', 'pin-import-page'],
+    () => sheetsChanged(),
+  )
   element('panel-toggle').addEventListener('click', () => sheets.toggle('panel'))
   element('panel-close').addEventListener('click', () => sheets.close())
   element('places-toggle').addEventListener('click', () => sheets.toggle('places-page'))
@@ -710,6 +714,27 @@ async function start(): Promise<void> {
   wirePart('gazetteer', () => gazetteer.wire())
   watchers.push((tab) => gazetteer.watch(tab === 'search' || tab === 'progress'))
 
+  // Pins imported out of another application's database. Nothing in the
+  // interface points at this; it opens when such a file is dropped into the
+  // Import picker and not otherwise.
+  const pins = new PinImport(map, {
+    onOpen: () => sheets.open('pin-import-page'),
+    onCommitted: () => {
+      void places.load()
+      bustTileCache()
+      applyView(map, options)
+      void timeline.load()
+    },
+    setRestVisible: (visible) => {
+      setArchiveVisible(map, visible)
+      trails.suspend(!visible)
+      places.suspend(!visible)
+    },
+  })
+  wirePart('pin-import', () => pins.wire())
+  // An import left open is picked up again rather than stranded.
+  void pins.resume()
+
   // The holding pen. Nothing automatic reaches the map until it has been
   // looked at, and looking at it means seeing it on its own: the fog and the
   // trails are held off while one candidate route is on screen, and put back
@@ -727,7 +752,10 @@ async function start(): Promise<void> {
       trails.suspend(!visible)
     },
   })
-  sheetsChanged = () => review.closed()
+  sheetsChanged = () => {
+    review.closed()
+    pins.closed()
+  }
   const attachReview = () => {
     try {
       review.attach()
@@ -776,12 +804,41 @@ async function start(): Promise<void> {
     void trackers.load()
   })
 
-  const imports = new Imports(() => {
-    bustTileCache()
-    applyView(map, options)
-    void timeline.load()
-    void trails.refresh()
-  })
+  const imports = new Imports(
+    () => {
+      bustTileCache()
+      applyView(map, options)
+      void timeline.load()
+      void trails.refresh()
+    },
+    // A places database from another application. Staged, never added, so
+    // there is nothing to redraw here - the sidebar opens instead.
+    async (file) => {
+      const body = new FormData()
+      body.append('file', file)
+      const response = await fetch('/api/import/pins', {
+        method: 'POST',
+        headers: { 'X-Irfaran-Token': getToken() },
+        body,
+      })
+      const text = await response.text()
+      let parsed: unknown = null
+      try {
+        parsed = JSON.parse(text)
+      } catch {
+        /* fall through to the status line */
+      }
+      if (!response.ok) {
+        const detail =
+          parsed && typeof parsed === 'object' && 'detail' in parsed
+            ? String((parsed as { detail: unknown }).detail)
+            : `${response.status} ${response.statusText}`
+        throw new ApiError(response.status, detail)
+      }
+      await pins.begin()
+      return describeStaged(parsed as StageReport)
+    },
+  )
   wirePart('imports', () => imports.wire())
 
   const backup = new Backup(() => {

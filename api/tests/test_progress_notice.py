@@ -147,6 +147,85 @@ class TestWiringIsFaultIsolated:
         assert self.main_source().count("wirePart(") > 5
 
 
+class TestThePinImportStaysHidden:
+    """Asked for as a feature nobody is invited to use.
+
+    Noted in the release notes and nowhere in the interface: it is a one-off
+    for one person with a database of pins from another application. Guarded
+    because "add a button for it" is the obvious, friendly, wrong change - and
+    because the requirement lives in a conversation rather than in the code.
+    """
+
+    def import_panel(self) -> str:
+        """The visible markup of the Import tab, and only that."""
+        markup = (WEB / "index.html").read_text()
+        start = markup.index('<div class="tab-panel" data-tab="import"')
+        end = markup.index('<div class="tab-panel"', start + 1)
+        return markup[start:end]
+
+    def test_the_import_page_says_nothing_about_it(self) -> None:
+        # Words a person can read, not attributes. The accept list on the
+        # hidden input does name the extension, and has to.
+        visible = re.sub(r"<[^>]*>", " ", self.import_panel()).lower()
+        for word in ("places database", "pin", "sqlite", ".db"):
+            assert word not in visible, (
+                f"the Import page tells the reader about {word!r}, which makes "
+                "this a feature rather than a one-off nobody was told about"
+            )
+
+    def test_the_picker_still_accepts_the_file(self) -> None:
+        # The one visible change, and it is not visible: an extension in an
+        # attribute on a hidden input.
+        markup = (WEB / "index.html").read_text()
+        line = next(row for row in markup.splitlines() if 'id="import-file"' in row)
+        assert ".db" in line
+
+    def test_there_is_no_tab_or_button_for_it(self) -> None:
+        markup = (WEB / "index.html").read_text()
+        tabs = re.findall(r'data-tab="([a-z-]+)"', markup)
+        assert not [tab for tab in tabs if "pin" in tab]
+        # The sidebar's own controls are the only pin-import buttons, and they
+        # only exist once it is open.
+        aside = markup.index('id="pin-import-page"')
+        for match in re.finditer(r'id="(pin-import-[a-z-]+)"', markup):
+            assert match.start() >= aside, (
+                f"{match.group(1)} sits outside the sidebar, so something "
+                "outside it can be clicked to get here"
+            )
+
+
+class TestStagedPinEditsCannotOvertakeEachOther:
+    """Same shape as the holding pen, and the same fix, applied up front."""
+
+    def test_a_save_carries_the_whole_pin(self) -> None:
+        body = body_of(source("pinimport.ts"), "private async saveEdits(")
+        for field in ("name", "people", "label_id", "prominence"):
+            assert field in body
+
+    def test_saves_are_chained(self) -> None:
+        body = body_of(source("pinimport.ts"), "private queue(")
+        assert "this.chain" in body and ".then(" in body
+
+    def test_keeping_a_pin_sends_the_last_edit_first(self) -> None:
+        body = body_of(source("pinimport.ts"), "private async decide(")
+        assert "await this.flush()" in body
+
+
+class TestReviewingImportedPinsHidesTheRest:
+    def test_the_existing_pins_go_away_too(self) -> None:
+        # Not just the fog and the tracks: three hundred pins already on the
+        # map is exactly what makes one more unreadable.
+        text = source("main.ts")
+        assert "places.suspend(!visible)" in text
+
+    def test_and_come_back_when_the_sidebar_closes(self) -> None:
+        body = body_of(source("pinimport.ts"), "private leave(")
+        assert "setRestVisible(true)" in body
+
+    def test_closing_sideways_is_heard_about(self) -> None:
+        assert "pins.closed()" in source("main.ts")
+
+
 class TestReFogIsOnlyALabel:
     """The button was renamed in 0.18.1. What it writes was not.
 

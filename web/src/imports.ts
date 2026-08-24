@@ -28,10 +28,20 @@ interface IngestResult {
 
 export class Imports {
   private readonly onDone: () => void
+  /**
+   * What to do with a places database from another application.
+   *
+   * Nothing in the interface offers this - the picker simply accepts the file
+   * and the server recognises it by its shape. Handled apart from the track
+   * files because nothing is rendered: the pins are staged, not added, so
+   * there is no map to redraw until somebody has looked at them.
+   */
+  private readonly onPins: (file: File) => Promise<string>
   private running = false
 
-  constructor(onDone: () => void) {
+  constructor(onDone: () => void, onPins: (file: File) => Promise<string>) {
     this.onDone = onDone
+    this.onPins = onPins
   }
 
   wire(): void {
@@ -88,6 +98,31 @@ export class Imports {
     }
 
     this.running = true
+
+    // A places database is not a track file and shares nothing with this path
+    // but the picker. Taken first and on its own.
+    const pins = files.filter((file) => file.name.toLowerCase().endsWith('.db'))
+    files = files.filter((file) => !pins.includes(file))
+    if (pins.length) {
+      const outcomes: ImportOutcome[] = []
+      for (const file of pins) {
+        try {
+          outcomes.push({ name: file.name, ok: true, detail: await this.onPins(file) })
+        } catch (error) {
+          outcomes.push({
+            name: file.name,
+            ok: false,
+            detail: error instanceof ApiError ? error.message : String(error),
+          })
+        }
+      }
+      this.report(outcomes)
+      if (!files.length) {
+        this.running = false
+        return
+      }
+    }
+
     element('import-progress-row').hidden = false
     const bar = element<HTMLProgressElement>('import-progress')
     bar.max = files.length

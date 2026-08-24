@@ -501,6 +501,17 @@ export class Places {
     return false
   }
 
+  /**
+   * Hide every pin on the map without forgetting any of them.
+   *
+   * For reviewing imported pins on their own. A class on the map container
+   * rather than removing the markers: they are MapLibre's to position, and
+   * putting three hundred of them back afterwards is work for nothing.
+   */
+  suspend(on: boolean): void {
+    this.map.getContainer().classList.toggle('map-pins-off', on)
+  }
+
   private paintMarkers(): void {
     for (const marker of this.markers.values()) marker.remove()
     this.markers.clear()

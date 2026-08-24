@@ -249,6 +249,16 @@ def as_dict(row: sqlite3.Row) -> dict[str, object]:
     }
 
 
+#: The two guards a pin has to pass, named so that another module can use
+#: them instead of reaching for the underscored versions. Anything that stages
+#: a pin before creating it has to validate it exactly as this module does, or
+#: the two come to disagree about what a valid pin is - and the one that finds
+#: out is whoever gets a 400 after twenty minutes of reviewing. See
+#: pinimport.py.
+validate = _validate
+reference = _reference
+
+
 def create(
     conn: sqlite3.Connection, payload: dict
 ) -> tuple[dict[str, object], list[str], set[tuple[int, int]]]:
