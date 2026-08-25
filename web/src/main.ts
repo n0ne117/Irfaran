@@ -43,7 +43,7 @@ import { getPinsVisible, Places, setPinsVisible } from './places'
 import { PinImport, describeStaged, type StageReport } from './pinimport'
 import { Review } from './review'
 import { Search } from './search'
-import { describeRemaining, runRender } from './render'
+import { describeRemaining, runRender, watchRender } from './render'
 import { Setup } from './setup'
 import { hydrateIcons, setIcon } from './icons'
 import { History } from './history'
@@ -70,7 +70,30 @@ import {
   type MapTheme,
   type UiTheme,
 } from './theme'
-import { element, notice, radioGroup, Sheets, wireTabs, wireTokenField, wireZoom } from './ui'
+import {
+  element,
+  notice,
+  radioGroup,
+  Sheets,
+  wireTabs,
+  wireTokenField,
+  wireZoom,
+  type Notice,
+} from './ui'
+
+/**
+ * The drawing tools, drivable from outside.
+ *
+ * Handing a gap in a track over to the Track tool means arming it from the
+ * review sidebar, which is on the other side of the app. Rather than a second
+ * drawing implementation inside the review - undo stack, zoom lock, brush ring
+ * and all - the one that exists is given a door.
+ */
+interface Drawing {
+  draw: Draw
+  arm(tool: Tool): void
+  putAway(): void
+}
 
 /** Named trail colour ramps, matching composite.TRAIL_RAMP_SETS. */
 type TrailRamp = 'ember' | 'ice' | 'moss' | 'mono'
@@ -216,8 +239,9 @@ function wireDrawing(
   timeline: Timeline,
   trails: Trails,
   brush: Brush,
-): Draw {
-  const status = notice('draw-status')
+  status: Notice,
+  onStroke: () => void,
+): Drawing {
   const hint = element('draw-hint')
   const undoButton = element<HTMLButtonElement>('draw-undo')
 
@@ -229,6 +253,7 @@ function wireDrawing(
       void timeline.load()
       void trails.refresh()
       refreshUndo()
+      onStroke()
     },
     (message, bad) => status.show(message, bad),
     // Rasterising a stroke into every view takes seconds on a full archive,
@@ -351,7 +376,26 @@ function wireDrawing(
   map.on('zoomend', refreshLock)
   map.on('load', refreshLock)
   refreshLock()
-  return draw
+
+  return {
+    draw,
+    arm(tool: Tool) {
+      bar.hidden = false
+      toggle.setAttribute('aria-pressed', 'true')
+      draw.setTool(tool)
+      brush.setTool(tool)
+      paintTool(tool)
+      refreshLock()
+    },
+    putAway() {
+      draw.setTool('off')
+      brush.setTool('off')
+      paintTool('off')
+      bar.hidden = true
+      toggle.setAttribute('aria-pressed', 'false')
+      refreshLock()
+    },
+  }
 }
 
 /**
@@ -454,6 +498,38 @@ function wireReviewGates(refresh: () => void): void {
         })
     })
   }
+}
+
+/**
+ * Follow whatever the queue is drawing, on the bar above the time bar.
+ *
+ * Anything that defers a render owes somebody this. Drawing has done it since
+ * strokes stopped rendering inline; accepting a reviewed track did not, so the
+ * map redrew itself in silence and the only sign was tiles changing underneath
+ * you. Reported as "whenever a track is accepted it gets drawn - this needs to
+ * be represented by the progress bar on top of the time bar".
+ *
+ * An indeterminate bar goes up first rather than waiting for the first poll:
+ * a small accept can be finished before a poll comes back, and a bar that
+ * never appears is indistinguishable from one that is broken.
+ *
+ * It always ends on a message rather than on a bar, because painting progress
+ * cancels the timer that hides a notice - the reason a bar once sat at three
+ * quarters for good.
+ */
+async function followTheQueue(status: Notice, summary: string): Promise<void> {
+  status.progress(0, 0, summary)
+  const finished = await watchRender((state) => {
+    if (state.state === 'running' || state.state === 'stopping') {
+      status.progress(state.done, state.total, `${summary} — drawing the map`)
+    }
+  })
+  status.show(
+    finished === null
+      ? `${summary}. Still drawing on the server — Settings, In progress ` +
+        'shows where it got to.'
+      : summary,
+  )
 }
 
 function wirePart(name: string, wire: () => void): void {
@@ -685,7 +761,29 @@ async function start(): Promise<void> {
   })
   void timeline.load()
 
-  const draw = wireDrawing(map, options, timeline, trails, brush)
+  // One notice for the bar above the time bar, made here rather than inside
+  // wireDrawing: more than one thing draws the map now, and two notice()
+  // instances over the same element replace each other's contents.
+  const drawStatus = notice('draw-status')
+
+  // Set while a gap in a review is being drawn by hand, and run by the next
+  // stroke that lands. One shot: whatever the stroke was, the review is what
+  // we came from and what we go back to.
+  let backFromDrawing: (() => void) | null = null
+  const drawing = wireDrawing(
+    map,
+    options,
+    timeline,
+    trails,
+    brush,
+    drawStatus,
+    () => {
+      const back = backFromDrawing
+      backFromDrawing = null
+      back?.()
+    },
+  )
+  const draw = drawing.draw
 
   const places = new Places(map, () => {
     bustTileCache()
@@ -766,15 +864,56 @@ async function start(): Promise<void> {
   // the moment the sidebar closes however it was closed.
   const review = new Review(map, {
     onOpen: () => sheets.open('review-page'),
-    onApproved: () => {
+    onApproved: (summary) => {
       bustTileCache()
       applyView(map, options)
       void timeline.load()
       void trails.refresh()
+      // Accepting a track is a render, and it is the same render drawing a
+      // stroke is - so it is reported the same way, in the same place.
+      void followTheQueue(drawStatus, summary)
     },
     setRestVisible: (visible) => {
       setArchiveVisible(map, visible)
       trails.suspend(!visible)
+    },
+    // Hand a gap over to the Track tool, and come back afterwards.
+    //
+    // The sidebar is hidden directly rather than through the sheets, so the
+    // review keeps its candidate on the map and its place in the list - the
+    // point of doing this here rather than later is that you are looking at
+    // the gap and know where you went, and that is gone tomorrow.
+    onDrawGap: (from, to, year) => {
+      const camera = map.cameraForBounds(
+        [
+          [Math.min(from[0], to[0]), Math.min(from[1], to[1])],
+          [Math.max(from[0], to[0]), Math.max(from[1], to[1])],
+        ],
+        { padding: 80, maxZoom: 17 },
+      )
+      // Jumped rather than eased: drawing is locked out below z14 and the tool
+      // is armed on the next line, so the camera has to already be there.
+      map.jumpTo({
+        center: (camera?.center as never) ?? [(from[0] + to[0]) / 2, (from[1] + to[1]) / 2],
+        zoom: Math.max(MIN_DRAW_ZOOM, Number(camera?.zoom ?? MIN_DRAW_ZOOM)),
+      })
+
+      const before = draw.layers
+      // The hand-drawn piece belongs to the same year as the track it fills a
+      // hole in, not to prehistory.
+      if (year) draw.layers = year
+      element('review-page').hidden = true
+      drawing.arm('freehand')
+      drawStatus.show(
+        'Draw the stretch the phone missed. It is saved as a hand-drawn ' +
+          'route, and the review is waiting.',
+      )
+
+      backFromDrawing = () => {
+        draw.layers = before
+        drawing.putAway()
+        sheets.open('review-page')
+      }
     },
   })
   sheetsChanged = () => {

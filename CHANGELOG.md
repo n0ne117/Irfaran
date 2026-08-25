@@ -11,6 +11,27 @@ Entries are written for someone reading the release page, not for someone readin
 
 Nothing yet.
 
+## [0.18.9] - 2026-08-25
+
+### Added
+- **What the phone said about itself is kept, per fix.** Overland sends a horizontal accuracy and a motion class with every location. The accuracy was used to drop the bad ones and then thrown away; the motion was collapsed into one set for the whole delivery, so which fix was which was lost. Between them they are the only fields that can tell a stale position from a real unreported stretch — and the batch that would have proved something about iOS is always the one already discarded, so this is recorded now rather than when it is wanted.
+
+  Both ride through the holding pen and onto the event as arrays beside the timestamps, and only when the source actually sends them — a tracker that reports no accuracy does not get an array of nulls in every event for the rest of time.
+
+- **Each gap in a review says what was reported either side of it.** `±8→48 m driving→walking` beside `599 m — 40 s — 4.0× the usual`. A fix six times coarser than its neighbour, arriving while the phone changed its mind about what it was doing, is a different animal from a genuine forty seconds of silence at speed — and now it is possible to tell which one is on screen.
+
+- **Draw the missing stretch, from the gap that is missing it.** A cut gap offers *Draw it*: the sidebar steps aside, the map jumps to the two ends, the Track tool is armed, and the stroke is filed under the track's own year rather than prehistory. When it lands, the tool is put away, the layer field is put back to whatever it was, and the review reopens where it was left.
+
+  Not a second drawing implementation inside the review — the one that exists, with its undo stack, zoom lock and brush ring, is given a door. The reason to do it here rather than later is that you are looking at the gap and know where you went, and that is gone tomorrow.
+
+### Fixed
+- **Accepting a track now shows on the bar above the time bar.** Reported as: it gets drawn and nothing says so. Drawing a stroke has followed the render queue since strokes stopped rendering inline; accepting a reviewed track deferred exactly the same render and told nobody, so the map redrew itself in silence and the only sign was tiles changing underneath you.
+
+  It now reports through the same notice, in the same place, ending on a message rather than on a bar — the reason a bar once sat at three quarters for good. An indeterminate bar goes up before the first poll comes back, because a small accept can finish inside a single poll and a bar that never appears is indistinguishable from a broken one.
+
+### Note
+There was a real bug behind that one and it was not the wiring: `notice()` replaces its element's contents, so two of them over the same id quietly take each other's children away. There is now one owner of that bar, created once and handed to whoever needs it, and a test that says so.
+
 ## [0.18.8] - 2026-08-24
 
 ### Fixed

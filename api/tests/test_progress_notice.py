@@ -402,6 +402,92 @@ class TestTheReviewPreview:
         assert "this.redraw()" in text and "this.later()" in text
 
 
+class TestAcceptingATrackShowsOnTheBar:
+    """Reported as: accepting a track draws the map and the bar never moves.
+
+    Drawing has followed the queue since strokes stopped rendering inline.
+    Accepting a reviewed track deferred exactly the same render and told
+    nobody, so the map redrew itself in silence.
+    """
+
+    def test_there_is_one_follower_and_the_review_uses_it(self) -> None:
+        text = source("main.ts")
+        assert "async function followTheQueue(" in text
+        assert "void followTheQueue(drawStatus, summary)" in text
+
+    def test_it_watches_the_queue_rather_than_guessing(self) -> None:
+        body = body_of(source("main.ts"), "async function followTheQueue(")
+        assert "watchRender(" in body
+
+    def test_it_puts_a_bar_up_before_the_first_poll(self) -> None:
+        # A small accept can finish before a poll comes back, and a bar that
+        # never appears is indistinguishable from one that is broken.
+        body = body_of(source("main.ts"), "async function followTheQueue(")
+        assert "status.progress(0, 0" in body
+
+    def test_it_ends_on_a_message_not_on_a_bar(self) -> None:
+        # Painting progress cancels the timer that hides a notice, which is how
+        # a bar came to sit at three quarters for good.
+        body = body_of(source("main.ts"), "async function followTheQueue(")
+        assert "status.show(" in body
+
+    def test_only_one_notice_owns_that_element(self) -> None:
+        # notice() replaces the element's contents, so two of them over the
+        # same id quietly take each other's children away.
+        assert source("main.ts").count("notice('draw-status')") == 1
+
+
+class TestHandingAGapToTheDrawingTools:
+    """The review does not get its own brush; the real one gets a door."""
+
+    def test_the_review_asks_rather_than_draws(self) -> None:
+        text = source("review.ts")
+        assert "this.onDrawGap(" in text
+        for own in ("addSource('irfaran-draw", "pointerdown", "undoStack"):
+            assert own not in text, "the review is growing its own drawing tools"
+
+    def test_it_saves_before_leaving(self) -> None:
+        # A trim or a rename made a moment ago must survive the detour.
+        body = body_of(source("review.ts"), "  private handOver(")
+        assert "this.flush()" in body
+
+    def test_only_a_cut_gap_offers_it(self) -> None:
+        body = body_of(source("review.ts"), "  private paintGaps(")
+        assert "if (gap.cut) {" in body
+
+    def test_the_tools_can_be_armed_and_put_away(self) -> None:
+        text = source("main.ts")
+        assert "arm(tool: Tool)" in text and "putAway()" in text
+
+    def test_the_camera_arrives_before_the_tool_is_armed(self) -> None:
+        # Drawing is locked out below z14, so easing there and arming would
+        # arm nothing.
+        text = source("main.ts")
+        assert "map.jumpTo(" in text
+        assert "Math.max(MIN_DRAW_ZOOM" in text
+
+    def test_it_comes_back_afterwards(self) -> None:
+        text = source("main.ts")
+        assert "backFromDrawing" in text
+        assert "sheets.open('review-page')" in text
+
+    def test_the_layer_is_put_back(self) -> None:
+        # The hand-drawn piece goes into the track's year, and the field the
+        # person had set is theirs, not ours.
+        text = source("main.ts")
+        assert "draw.layers = before" in text
+
+
+class TestWhatThePhoneSaidIsShown:
+    def test_a_gap_says_the_accuracy_and_the_motion(self) -> None:
+        body = body_of(source("review.ts"), "function describeEnds(")
+        assert "accuracy_before" in body and "motion_before" in body
+
+    def test_and_says_nothing_when_the_source_said_nothing(self) -> None:
+        body = body_of(source("review.ts"), "function describeEnds(")
+        assert "parts.join" in body, "it has to be able to come back empty"
+
+
 class TestWhereADayBreaksInTheReview:
     """A cut has to be visible, reversible, and the same one that lands."""
 

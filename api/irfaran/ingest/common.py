@@ -81,6 +81,12 @@ class Fix:
     lat: float
     time: datetime | None = None
     accuracy: float | None = None
+    #: What the device thought it was doing - walking, driving, stationary.
+    #: Overland reports it per fix and it is the closest thing to a direct
+    #: answer about whether a gap is plausible: six hundred metres while
+    #: driving is an unreported stretch, and while walking it cannot be.
+    #: Nothing else sends it, so it is usually None.
+    motion: str | None = None
 
 
 @dataclass

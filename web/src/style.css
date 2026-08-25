@@ -2246,3 +2246,8 @@ kbd {
   content: ' · by hand';
   color: var(--accent);
 }
+
+.review-gap-buttons {
+  display: flex;
+  gap: 0.25rem;
+}

@@ -158,7 +158,12 @@ def set_gated(conn: sqlite3.Connection, source: str, gated: bool) -> None:
 
 
 def _encode(fixes: list[common.Fix]) -> str:
-    """Fixes as JSON: [lon, lat, ISO 8601 | null] per point.
+    """Fixes as JSON: [lon, lat, ISO 8601, accuracy, motion] per point.
+
+    Accuracy and motion ride along because they are what the review is for:
+    a coarse fix or a motion that cannot cover the ground either side of a gap
+    is the difference between a stale position and a real unreported stretch.
+    A field the pen drops is a field the archive never sees.
 
     Nothing is rounded and nothing is shortened. The gate has to be a delay
     and not a second, subtly different way into the archive, which means a
@@ -170,7 +175,8 @@ def _encode(fixes: list[common.Fix]) -> str:
     It costs less than it looks: Python writes the shortest string that reads
     back as the same float, so a coordinate that arrived as `16.3724514` is
     stored as `16.3724514`. Accuracy is the one thing left out - inaccurate
-    fixes are dropped on the way in, so what is reviewed is what will land.
+    fixes are dropped on the way in, so what is reviewed is what will land -
+    the accuracy stored is that of a fix that already passed the filter.
     """
     return json.dumps(
         [
@@ -180,6 +186,8 @@ def _encode(fixes: list[common.Fix]) -> str:
                 None
                 if fix.time is None
                 else fix.time.astimezone(timezone.utc).isoformat(),
+                fix.accuracy,
+                fix.motion,
             ]
             for fix in fixes
         ],
@@ -190,16 +198,24 @@ def _encode(fixes: list[common.Fix]) -> str:
 def _decode(raw: str | None) -> list[common.Fix]:
     if not raw:
         return []
-    return [
-        common.Fix(
-            lon=float(item[0]),
-            lat=float(item[1]),
-            time=None
-            if len(item) < 3 or item[2] is None
-            else datetime.fromisoformat(str(item[2])),
+    def at(item: list, index: int) -> object | None:
+        return item[index] if len(item) > index else None
+
+    out: list[common.Fix] = []
+    for item in json.loads(raw):
+        when = at(item, 2)
+        accuracy = at(item, 3)
+        motion = at(item, 4)
+        out.append(
+            common.Fix(
+                lon=float(item[0]),
+                lat=float(item[1]),
+                time=None if when is None else datetime.fromisoformat(str(when)),
+                accuracy=None if accuracy is None else float(accuracy),
+                motion=None if motion is None else str(motion),
+            )
         )
-        for item in json.loads(raw)
-    ]
+    return out
 
 
 def _stamp(fix: common.Fix) -> str | None:

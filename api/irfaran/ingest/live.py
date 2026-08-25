@@ -146,6 +146,22 @@ def parse_overland(
         properties = feature.get("properties") or {}
         accuracy = properties.get("horizontal_accuracy")
 
+        # Per fix, not per batch. Overland says what the phone thought it was
+        # doing at each point, and collapsing that into one set for the whole
+        # delivery threw away the only field that can say whether a gap is
+        # plausible - six hundred metres while driving is an unreported
+        # stretch, and while walking it cannot be.
+        motion = properties.get("motion")
+        if isinstance(motion, list):
+            here = sorted(str(item) for item in motion if str(item))
+            motions.update(here)
+            moving = ", ".join(here) or None
+        elif motion:
+            moving = str(motion)
+            motions.add(moving)
+        else:
+            moving = None
+
         fixes.append(
             Fix(
                 lon=_coordinate(coordinates[0], f"Overland location {index} longitude"),
@@ -156,14 +172,9 @@ def parse_overland(
                 accuracy=None if accuracy is None else _coordinate(
                     accuracy, f"Overland location {index} accuracy"
                 ),
+                motion=moving,
             )
         )
-
-        motion = properties.get("motion")
-        if isinstance(motion, list):
-            motions.update(str(item) for item in motion)
-        elif motion:
-            motions.add(str(motion))
 
         if properties.get("device_id"):
             devices.add(str(properties["device_id"]))
@@ -335,6 +346,14 @@ class Gap:
     ratio: float | None
     #: Why it is a cut: distance, time, rate - or "" if it is not one.
     reason: str = ""
+    #: What the device reported about the fixes either side. The point of
+    #: keeping these at all: a coarse accuracy or a motion that cannot cover
+    #: the ground is the difference between a stale position and a real
+    #: unreported stretch, and nothing else in the data can tell them apart.
+    accuracy_before: float | None = None
+    accuracy_after: float | None = None
+    motion_before: str | None = None
+    motion_after: str | None = None
 
     @property
     def cut(self) -> bool:
@@ -347,6 +366,10 @@ class Gap:
             "seconds": self.seconds,
             "ratio": self.ratio,
             "reason": self.reason,
+            "accuracy_before": self.accuracy_before,
+            "accuracy_after": self.accuracy_after,
+            "motion_before": self.motion_before,
+            "motion_after": self.motion_after,
         }
 
 
@@ -413,7 +436,20 @@ def survey(fixes: list[Fix], limits: dict[str, float] | None = None) -> list[Gap
         ):
             reason = "rate"
 
-        out.append(Gap(index, metres, seconds, local, ratio, reason))
+        out.append(
+            Gap(
+                index,
+                metres,
+                seconds,
+                local,
+                ratio,
+                reason,
+                accuracy_before=before.accuracy,
+                accuracy_after=after.accuracy,
+                motion_before=before.motion,
+                motion_after=after.motion,
+            )
+        )
         if seconds is not None and seconds > 0:
             intervals.append(seconds)
 
@@ -468,39 +504,82 @@ def _day_events(
     return sorted(rows, key=lambda row: _ordinal_of(str(row["external_id"]), day))
 
 
-def _points_of(row: sqlite3.Row) -> list[tuple[str, float, float]]:
-    """A stretch's fixes as (timestamp, lon, lat), in stored order."""
+@dataclass(frozen=True)
+class Held:
+    """One stored fix, with everything the device said about it.
+
+    Accuracy and motion are kept because they are the only fields that can
+    say whether a gap is plausible, and because a discarded field cannot be
+    analysed later - the batch that would have proved something about iOS is
+    always the one that has already gone.
+    """
+
+    stamp: str
+    lon: float
+    lat: float
+    accuracy: float | None = None
+    motion: str | None = None
+
+
+def _points_of(row: sqlite3.Row) -> list[Held]:
+    """A stretch's fixes, in stored order."""
     stored = json.loads(row["meta"] or "{}")
     # The first fix of a stretch is stored as a Point and everything after it
     # as a LineString, so read it back through the helper that knows both.
     coordinates = raster.geometry_points(row["geometry"], int(row["id"]))
     stamps = stored.get("timestamps") or []
-    return [
-        (stamp, lon, lat) for stamp, (lon, lat) in zip(stamps, coordinates)
-    ]
+    accuracies = stored.get("accuracies") or []
+    motions = stored.get("motions") or []
+
+    def at(values: list, index: int) -> object | None:
+        return values[index] if index < len(values) else None
+
+    out: list[Held] = []
+    for index, (stamp, (lon, lat)) in enumerate(zip(stamps, coordinates)):
+        accuracy = at(accuracies, index)
+        out.append(
+            Held(
+                stamp=stamp,
+                lon=lon,
+                lat=lat,
+                accuracy=None if accuracy is None else float(accuracy),
+                motion=(lambda value: None if value is None else str(value))(
+                    at(motions, index)
+                ),
+            )
+        )
+    return out
 
 
-def _geometry_of(points: list[tuple[str, float, float]]) -> str:
+def _geometry_of(points: list[Held]) -> str:
     if len(points) == 1:
         return json.dumps(
-            {"type": "Point", "coordinates": [points[0][1], points[0][2]]}
+            {"type": "Point", "coordinates": [points[0].lon, points[0].lat]}
         )
     return json.dumps(
         {
             "type": "LineString",
-            "coordinates": [[lon, lat] for _, lon, lat in points],
+            "coordinates": [[point.lon, point.lat] for point in points],
         }
     )
 
 
-def _as_fixes(points: list[tuple[str, float, float]]) -> list[Fix]:
+def _as_fixes(points: list[Held]) -> list[Fix]:
     out: list[Fix] = []
-    for stamp, lon, lat in points:
+    for point in points:
         try:
-            when = datetime.fromisoformat(stamp)
+            when = datetime.fromisoformat(point.stamp)
         except ValueError:
             when = None
-        out.append(Fix(lon=lon, lat=lat, time=when))
+        out.append(
+            Fix(
+                lon=point.lon,
+                lat=point.lat,
+                time=when,
+                accuracy=point.accuracy,
+                motion=point.motion,
+            )
+        )
     return out
 
 
@@ -533,9 +612,9 @@ def _append_day(
     # when its points belong to a stretch that is no longer the open one.
     seen: set[str] = set()
     for row in day_events:
-        seen.update(stamp for stamp, _, _ in _points_of(row))
+        seen.update(point.stamp for point in _points_of(row))
 
-    fresh: list[tuple[str, float, float]] = []
+    fresh: list[Held] = []
     for fix in fixes:
         stamp = (
             (fix.time or datetime.now(timezone.utc))
@@ -546,7 +625,15 @@ def _append_day(
             result.duplicates += 1
             continue
         seen.add(stamp)
-        fresh.append((stamp, fix.lon, fix.lat))
+        fresh.append(
+            Held(
+                stamp=stamp,
+                lon=fix.lon,
+                lat=fix.lat,
+                accuracy=fix.accuracy,
+                motion=fix.motion,
+            )
+        )
 
     if not fresh:
         return set()
@@ -555,7 +642,7 @@ def _append_day(
 
     held = _points_of(open_row) if open_row is not None else []
     combined = [*held, *fresh]
-    combined.sort(key=lambda item: item[0])
+    combined.sort(key=lambda point: point.stamp)
 
     # Only breaks at or after the boundary count: anything earlier is history,
     # and history is not re-split.
@@ -569,8 +656,8 @@ def _append_day(
         # stretch that is already here.
         found = [
             index
-            for index, (stamp, _, _) in enumerate(combined)
-            if index > 0 and stamp in breaks_at
+            for index, point in enumerate(combined)
+            if index > 0 and point.stamp in breaks_at
         ]
         # ...but the join to what is already here is still the rule's call. A
         # review looked at one batch; whether it continues the stretch in the
@@ -597,9 +684,21 @@ def _append_day(
     for number, (begin, end) in enumerate(pieces):
         points = combined[begin : end + 1]
         note: dict[str, object] = {**stored, **meta} if number == 0 else dict(meta)
-        note["timestamps"] = [stamp for stamp, _, _ in points]
+        note["timestamps"] = [point.stamp for point in points]
         note["live"] = True
         note["fixes"] = len(points)
+
+        # Only written when the source actually sends them, so a tracker that
+        # says nothing about accuracy does not get an array of nulls in every
+        # event for the rest of time.
+        if any(point.accuracy is not None for point in points):
+            note["accuracies"] = [point.accuracy for point in points]
+        else:
+            note.pop("accuracies", None)
+        if any(point.motion for point in points):
+            note["motions"] = [point.motion for point in points]
+        else:
+            note.pop("motions", None)
 
         if number == 0 and open_row is not None:
             event_id = int(open_row["id"])

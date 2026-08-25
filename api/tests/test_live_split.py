@@ -300,6 +300,128 @@ class TestOneEventPerStretch:
         assert keys == ["live-2026-08-16", "live-2026-08-17"]
 
 
+class TestWhatThePhoneSaidIsKept:
+    """Accuracy and motion, per fix, because they cannot be recovered later.
+
+    Overland sends both with every location. Accuracy was used to drop the bad
+    ones and then discarded; motion was collapsed into one set for the whole
+    delivery. Between them they are the only fields that can distinguish a
+    stale position from a real unreported stretch - and the batch that would
+    have proved something about iOS is always the one already thrown away.
+    """
+
+    def test_overland_reports_motion_per_fix(self) -> None:
+        payload = {
+            "locations": [
+                {
+                    "type": "Feature",
+                    "geometry": {"type": "Point", "coordinates": [LON, LAT]},
+                    "properties": {
+                        "timestamp": "2026-08-16T09:00:00Z",
+                        "horizontal_accuracy": 8,
+                        "motion": ["driving"],
+                    },
+                },
+                {
+                    "type": "Feature",
+                    "geometry": {"type": "Point", "coordinates": [LON + 0.001, LAT]},
+                    "properties": {
+                        "timestamp": "2026-08-16T09:00:20Z",
+                        "horizontal_accuracy": 42,
+                        "motion": ["walking", "stationary"],
+                    },
+                },
+            ]
+        }
+        fixes, meta = live.parse_overland(payload)
+        assert [fix.motion for fixes_ in [fixes] for fix in fixes_] == [
+            "driving",
+            "stationary, walking",
+        ]
+        assert [fix.accuracy for fix in fixes] == [8.0, 42.0]
+        # And the batch-level set is still there, so nothing that read it broke.
+        assert meta["motion"] == ["driving", "stationary", "walking"]
+
+    def test_they_are_stored_on_the_event(self, conn) -> None:
+        fixes = [
+            Fix(lon=LON, lat=LAT, time=START, accuracy=8.0, motion="driving"),
+            Fix(
+                lon=LON + 20 * PER_METRE,
+                lat=LAT,
+                time=START + timedelta(seconds=10),
+                accuracy=31.0,
+                motion="walking",
+            ),
+        ]
+        live.append(conn, "overland", fixes)
+        meta = json.loads(events_of(conn)[0]["meta"])
+        assert meta["accuracies"] == [8.0, 31.0]
+        assert meta["motions"] == ["driving", "walking"]
+
+    def test_a_source_that_says_nothing_stores_nothing(self, conn) -> None:
+        # No array of nulls in every event for the rest of time.
+        live.append(conn, "overland", walk([(10, 20)] * 4))
+        meta = json.loads(events_of(conn)[0]["meta"])
+        assert "accuracies" not in meta and "motions" not in meta
+
+    def test_they_survive_a_stretch_being_split(self, conn) -> None:
+        fixes = walk(TOWN)
+        fixes = [
+            Fix(
+                lon=fix.lon,
+                lat=fix.lat,
+                time=fix.time,
+                accuracy=float(index),
+                motion="driving" if index < 12 else "walking",
+            )
+            for index, fix in enumerate(fixes)
+        ]
+        live.append(conn, "overland", fixes)
+        rows = events_of(conn)
+        assert len(rows) == 2
+        first, second = (json.loads(row["meta"]) for row in rows)
+        assert first["accuracies"] == [float(i) for i in range(12)]
+        assert second["accuracies"] == [float(i) for i in range(12, 25)]
+        assert set(first["motions"]) == {"driving"}
+        assert set(second["motions"]) == {"walking"}
+
+    def test_a_gap_reports_what_was_said_either_side(self, conn) -> None:
+        fixes = walk(TOWN)
+        fixes = [
+            Fix(
+                lon=fix.lon,
+                lat=fix.lat,
+                time=fix.time,
+                accuracy=9.0 if index != 12 else 65.0,
+                motion="driving",
+            )
+            for index, fix in enumerate(fixes)
+        ]
+        gap = next(g for g in live.survey(fixes) if g.index == 12)
+        assert gap.accuracy_before == 9.0
+        assert gap.accuracy_after == 65.0
+        assert gap.motion_before == "driving" and gap.motion_after == "driving"
+
+    def test_the_pen_carries_them_to_the_archive(self, conn) -> None:
+        # A field the holding pen drops is a field the archive never sees.
+        fixes = [
+            Fix(lon=LON, lat=LAT, time=START, accuracy=7.0, motion="driving"),
+            Fix(
+                lon=LON + 20 * PER_METRE,
+                lat=LAT,
+                time=START + timedelta(seconds=10),
+                accuracy=12.0,
+                motion="driving",
+            ),
+        ]
+        review.hold_fixes(conn, "overland", fixes)
+        held = int(review.overview(conn)["items"][0]["id"])
+        review.approve(conn, held)
+        meta = json.loads(events_of(conn)[0]["meta"])
+        assert meta["accuracies"] == [7.0, 12.0]
+        assert meta["motions"] == ["driving", "driving"]
+
+
 def cleared_between(client) -> int:
     """Transparent fog pixels on the tile halfway across the jump in FAR."""
     fixes = walk(FAR)

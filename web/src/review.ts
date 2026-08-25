@@ -78,6 +78,11 @@ interface Gap {
   reason: string
   cut: boolean
   by_hand: boolean
+  /** What the device said about the fixes either side, when it says anything. */
+  accuracy_before: number | null
+  accuracy_after: number | null
+  motion_before: string | null
+  motion_after: string | null
 }
 
 interface Detail extends Waiting {
@@ -96,6 +101,30 @@ interface Detail extends Waiting {
   keeping: number
   keeping_metres: number
   stretches: number
+}
+
+/**
+ * What the device said about itself either side of a gap.
+ *
+ * Empty when it said nothing, which is most sources - only Overland reports
+ * motion, and accuracy is not always there either.
+ */
+function describeEnds(gap: Gap): string {
+  const parts: string[] = []
+  const { accuracy_before: a, accuracy_after: b } = gap
+  if (a !== null || b !== null) {
+    const round = (value: number | null) => (value === null ? '?' : Math.round(value))
+    parts.push(a === b ? `±${round(a)} m` : `±${round(a)}→${round(b)} m`)
+  }
+  const motions = [gap.motion_before, gap.motion_after].filter(Boolean)
+  if (motions.length) {
+    parts.push(
+      gap.motion_before === gap.motion_after
+        ? String(gap.motion_before)
+        : `${gap.motion_before ?? '?'}→${gap.motion_after ?? '?'}`,
+    )
+  }
+  return parts.join(' ')
 }
 
 /** Why the rule cut here, in words rather than in a keyword. */
@@ -152,9 +181,14 @@ function haversine(a: [number, number], b: [number, number]): number {
 export class Review {
   private readonly map: MapLibreMap
   private readonly onOpen: () => void
-  private readonly onApproved: () => void
+  private readonly onApproved: (summary: string) => void
   /** Hides everything else on the map while one batch is being looked at. */
   private readonly setRestVisible: (visible: boolean) => void
+  private readonly onDrawGap: (
+    from: [number, number],
+    to: [number, number],
+    year: string,
+  ) => void
 
   private items: Waiting[] = []
   private current: Detail | null = null
@@ -171,14 +205,20 @@ export class Review {
     map: MapLibreMap,
     hooks: {
       onOpen: () => void
-      onApproved: () => void
+      onApproved: (summary: string) => void
       setRestVisible: (visible: boolean) => void
+      onDrawGap: (
+        from: [number, number],
+        to: [number, number],
+        year: string,
+      ) => void
     },
   ) {
     this.map = map
     this.onOpen = hooks.onOpen
     this.onApproved = hooks.onApproved
     this.setRestVisible = hooks.setRestVisible
+    this.onDrawGap = hooks.onDrawGap
   }
 
   // ------------------------------------------------------------- map layers
@@ -470,21 +510,65 @@ export class Review {
       const parts: string[] = []
       if (gap.seconds !== null) parts.push(`${Math.round(gap.seconds)} s`)
       if (gap.ratio !== null) parts.push(`${gap.ratio.toFixed(1)}× the usual`)
+      // What the device said about itself either side of the silence. A coarse
+      // accuracy or a motion that cannot cover the ground is the difference
+      // between a stale position and a real unreported stretch, and nothing
+      // else in the data can tell them apart.
+      const said = describeEnds(gap)
+      if (said) parts.push(said)
       parts.push(gap.cut ? describeReason(gap.reason) : 'joined')
       detailLine.textContent = ` — ${parts.join(' · ')}`
       text.append(headline, detailLine)
 
-      const button = document.createElement('button')
-      button.type = 'button'
-      button.textContent = gap.cut ? 'Rejoin' : 'Cut'
-      button.title = gap.cut
+      const buttons = document.createElement('span')
+      buttons.className = 'review-gap-buttons'
+
+      const toggle = document.createElement('button')
+      toggle.type = 'button'
+      toggle.textContent = gap.cut ? 'Rejoin' : 'Cut'
+      toggle.title = gap.cut
         ? 'Draw the line straight across this gap after all'
         : 'Stop the line being drawn across this gap'
-      button.addEventListener('click', () => void this.toggleGap(gap))
+      toggle.addEventListener('click', () => void this.toggleGap(gap))
+      buttons.append(toggle)
 
-      row.append(text, button)
+      // Only where the line is not being drawn: there is nothing to fill in
+      // across a gap that is already joined.
+      if (gap.cut) {
+        const drawIt = document.createElement('button')
+        drawIt.type = 'button'
+        drawIt.textContent = 'Draw it'
+        drawIt.title =
+          'Draw the missing stretch by hand, then come back here'
+        drawIt.addEventListener('click', () => this.handOver(gap))
+        buttons.append(drawIt)
+      }
+
+      row.append(text, buttons)
       host.append(row)
     }
+  }
+
+  /**
+   * Hand this gap to the Track tool, and expect to come back.
+   *
+   * Saved first: a trim or a rename made a moment ago must not be lost to a
+   * detour through the drawing tools.
+   */
+  private handOver(gap: Gap): void {
+    const detail = this.current
+    if (!detail) return
+    const before = detail.fixes[gap.index - 1]
+    const after = detail.fixes[gap.index]
+    if (!before || !after) return
+
+    void this.flush().then(() => {
+      this.onDrawGap(
+        [before[0], before[1]],
+        [after[0], after[1]],
+        (detail.day || '').slice(0, 4),
+      )
+    })
   }
 
   /** Cut a gap the rule joined, or rejoin one it cut. */
@@ -834,18 +918,26 @@ export class Review {
       // it first is the difference between accepting what is on screen and
       // accepting what was on screen before the last drag.
       await this.flush()
-      const done = await apiSend<{ points: number; left_out: number; tiles_touched: number }>(
-        'POST',
-        `/api/review/${detail.id}/approve`,
-      )
+      const done = await apiSend<{
+        points: number
+        left_out: number
+        stretches: number
+        tiles_touched: number
+      }>('POST', `/api/review/${detail.id}/approve`)
+      const stretches =
+        done.stretches > 1 ? ` as ${done.stretches} stretches` : ''
+      const summary =
+        `Added ${done.points.toLocaleString()} points${stretches}` +
+        (done.left_out ? `, ${done.left_out.toLocaleString()} left out` : '')
+
       this.closeOne()
       await this.load()
       this.paintList()
-      this.onApproved()
+      // Told before the local note, so the bar above the time bar goes up
+      // while the sidebar is still saying what happened.
+      this.onApproved(summary)
       this.note(
-        `Added ${done.points.toLocaleString()} points` +
-          (done.left_out ? `, ${done.left_out.toLocaleString()} left out` : '') +
-          `. ${done.tiles_touched.toLocaleString()} tiles are being redrawn.`,
+        `${summary}. ${done.tiles_touched.toLocaleString()} tiles are being redrawn.`,
       )
     } catch (error) {
       this.say(error, 'review-message')

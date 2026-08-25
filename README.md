@@ -270,7 +270,8 @@ nothing else on screen to read it against.
 - **A phone is reviewed a day at a time**, because that is the unit a live source is
   stored in. Opening one seals it: whatever arrives next starts the following batch
   rather than joining the one you are reading, so the set cannot move underneath you.
-- **Cut and rejoin.** Every gap worth a decision is listed with the numbers behind it — how far, how long, how many times the usual reporting interval — and can be cut or rejoined by hand. A decision made here survives whatever the phone delivers next, and survives the thresholds being retuned.
+- **Cut and rejoin.** Every gap worth a decision is listed with the numbers behind it — how far, how long, how many times the usual reporting interval, and what the device said about itself either side: the accuracy of both fixes and what it thought it was doing. A fix that goes from ±8 m to ±48 m while the phone changes its mind from driving to walking is a different thing from a real unreported stretch, and those two fields are the only ones that can say so. Each gap can be cut or rejoined by hand. A decision made here survives whatever the phone delivers next, and survives the thresholds being retuned.
+- **Draw the missing stretch by hand**, from the gap that is missing it. The review hands over to the Track tool zoomed to the gap and filed under the track's own year, and comes back when the stroke lands — because you know where you went while you are looking at it, and not tomorrow.
 - **Edits are a note on the side.** Trim the ends, leave a part out, rename it — the
   coordinates are never rewritten, so undoing an edit is free and nothing is lost while
   you are still deciding.
