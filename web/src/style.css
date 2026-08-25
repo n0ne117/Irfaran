@@ -1469,7 +1469,11 @@ button:disabled {
   font-weight: 700;
 }
 
-.maplibregl-ctrl-attrib {
+/* Same specificity problem as the scale bar below, and this one has been
+   getting away with it: MapLibre's own attribution rules happen not to set a
+   font size, so a bare class here has had nothing to lose to. That is luck,
+   not design, and it lasts until a MapLibre release sets one. */
+#map .maplibregl-ctrl-attrib {
   font-size: 0.7rem;
 }
 
@@ -2250,4 +2254,41 @@ kbd {
 .review-gap-buttons {
   display: flex;
   gap: 0.25rem;
+}
+
+/* ---------------------------------------------------------------- scale bar */
+
+/* MapLibre's own control, wearing this application's clothes. The default is a
+   white box with a heavy dark border, which is the one thing on the map that
+   would not follow the theme.
+
+   The missing top border is deliberate and is MapLibre's: the bar reads as a
+   bracket measuring the ground underneath it, not as a label in a box.
+
+   Prefixed with #map, and that is not decoration. MapLibre's stylesheet is
+   imported from a module, so Vite emits it *after* this file - which means a
+   bare `.maplibregl-ctrl-scale` here has identical specificity and loses on
+   order. Written that way first and the bar came out white. An id beats a
+   class whatever the order, so this cannot be undone by a bundler deciding
+   to emit things differently. */
+#map .maplibregl-ctrl-scale {
+  padding: 0 0.3rem 0.05rem;
+  border: 1px solid var(--line);
+  border-top: none;
+  border-radius: 0 0 0.25rem 0.25rem;
+  background: color-mix(in srgb, var(--panel) 88%, transparent);
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.7rem;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.5;
+  backdrop-filter: blur(8px);
+}
+
+/* Below this the time bar and the attribution already share the bottom edge,
+   and a third thing in that corner is the one too many. */
+@media (max-width: 46rem) {
+  #map .maplibregl-ctrl-scale {
+    display: none;
+  }
 }

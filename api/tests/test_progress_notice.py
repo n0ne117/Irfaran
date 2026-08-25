@@ -202,6 +202,42 @@ class TestTheDropCursor:
             )
 
 
+class TestTheScaleBar:
+    """The one thing a map is expected to have that this did not.
+
+    MapLibre's own control, against the grain of the rest of this chrome - the
+    zoom slider is hand-built because MapLibre has no vertical one. A scale bar
+    is a scale bar, and that one already knows a degree of longitude is shorter
+    in Vienna than at the equator.
+    """
+
+    def test_it_is_added_once_and_in_metres(self) -> None:
+        text = source("map.ts")
+        assert text.count("new ScaleControl(") == 1
+        assert "unit: 'metric'" in text, "everything else in this app is metres"
+
+    def test_it_sits_in_the_one_free_corner(self) -> None:
+        # Top left is settings and search, top right the map tools, mid-left
+        # the zoom, bottom left the version and the review badge, and the
+        # middle is the time bar.
+        body = source("map.ts")
+        start = body.index("new ScaleControl(")
+        assert "'bottom-right'" in body[start : start + 200]
+
+    def test_it_follows_the_theme_rather_than_shipping_a_default(self) -> None:
+        css = (WEB / "src" / "style.css").read_text()
+        block = css[css.index(".maplibregl-ctrl-scale {") :][:600]
+        for token in ("var(--line)", "var(--muted)", "var(--panel)"):
+            assert token in block, f"the scale bar hard-codes a colour, not {token}"
+
+    def test_it_keeps_maplibres_open_topped_bracket(self) -> None:
+        # The bar reads as something measuring the ground underneath it rather
+        # than as a label in a box, and that is the missing top border.
+        css = (WEB / "src" / "style.css").read_text()
+        block = css[css.index(".maplibregl-ctrl-scale {") :][:600]
+        assert "border-top: none" in block
+
+
 class TestHidingEveryPin:
     """The button beside Places, and the thing it must not fight with.
 

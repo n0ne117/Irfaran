@@ -11,6 +11,18 @@ Entries are written for someone reading the release page, not for someone readin
 
 Nothing yet.
 
+## [0.18.11] - 2026-08-25
+
+### Added
+- **A scale bar**, bottom right, above the attribution. The one thing a map is expected to have that this did not. Metric, because everything else in the application is metres, and it picks the roundest distance that fits in about 120 pixels — `50 m` on a street, `1 km` over a city, `1000 km` over an ocean. It shortens as you go north, correctly: the same zoom reads 1 km at Vienna's latitude and 500 m at Tromsø's.
+
+  MapLibre's own control rather than one written here, which is against the grain of the rest of this chrome — the zoom slider is hand-built because MapLibre has no vertical one. But a scale bar is a scale bar, and that one already knows the projection. It is restyled to follow the theme instead of arriving as a white box, and hidden below 46rem, where the time bar and the attribution already share the bottom edge.
+
+### Fixed
+- **A stylesheet rule that had never applied.** The scale bar came out white on the first attempt: MapLibre's stylesheet is imported from a module, so the bundler emits it *after* `style.css`, and a bare `.maplibregl-ctrl-scale` here has identical specificity and loses on order. Both this and the attribution rule are now qualified with `#map`, which an ordering change cannot undo.
+
+  The attribution rule had been in that state since it was written — surviving only because MapLibre's own attribution rules happen not to set a font size. That is luck, and it lasts exactly until a MapLibre release sets one.
+
 ## [0.18.10] - 2026-08-25
 
 ### Fixed

@@ -4,7 +4,7 @@
 // Fog is opaque where the ground is unexplored, so it has to be drawn last.
 
 import { layers, namedFlavor } from '@protomaps/basemaps'
-import { Map as MapLibreMap, addProtocol } from 'maplibre-gl'
+import { Map as MapLibreMap, ScaleControl, addProtocol } from 'maplibre-gl'
 import type {
   DataDrivenPropertyValueSpecification,
   MapOptions as MapLibreMapOptions,
@@ -35,6 +35,15 @@ const TRAIL_LAYER = 'irfaran-trail'
 
 /** Deepest zoom the server renders fog and trail tiles at. Matches geo.MAX_Z. */
 export const MAX_RENDERED_ZOOM = 16
+
+/**
+ * How long the scale bar is allowed to be, in pixels.
+ *
+ * It is a maximum, not a length: the control picks the largest round distance
+ * that fits inside it, so a wider allowance means rounder numbers rather than
+ * a wider bar.
+ */
+const SCALE_WIDTH_PX = 120
 
 /** How long a fog or trail tile takes to cross-fade in, in milliseconds.
  *
@@ -366,7 +375,7 @@ export function createMap(setup: MapSetup): MapLibreMap {
     protocolRegistered = true
   }
 
-  return new MapLibreMap({
+  const map = new MapLibreMap({
     container: setup.container,
     style: buildStyle(setup),
     center: [0, 20],
@@ -381,6 +390,25 @@ export function createMap(setup: MapSetup): MapLibreMap {
       ],
     },
   })
+
+  // A scale bar, the one thing a map is expected to have that this did not.
+  //
+  // MapLibre's own control rather than one written here, which is against the
+  // grain of the rest of this chrome - the zoom slider is hand-built because
+  // MapLibre has no vertical one. But a scale bar is a scale bar, and this one
+  // already knows that a degree of longitude is shorter in Vienna than at the
+  // equator and which round number to land on. It is restyled to look like
+  // everything else instead of like a default.
+  //
+  // Bottom right, stacked above the attribution: top left is settings and
+  // search, top right the map tools, mid-left the zoom, bottom left the
+  // version and the review badge, and the middle is the time bar.
+  map.addControl(
+    new ScaleControl({ maxWidth: SCALE_WIDTH_PX, unit: 'metric' }),
+    'bottom-right',
+  )
+
+  return map
 }
 
 export function applyMapTheme(map: MapLibreMap, setup: MapSetup): void {
