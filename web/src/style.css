@@ -2285,8 +2285,16 @@ kbd {
   backdrop-filter: blur(8px);
 }
 
+/* Switched off under Settings, Appearance. Two classes deep so it wins over
+   the rule above whatever the order, for the same reason that one needs #map
+   in the first place. */
+#map.map-scale-off .maplibregl-ctrl-scale {
+  display: none;
+}
+
 /* Below this the time bar and the attribution already share the bottom edge,
-   and a third thing in that corner is the one too many. */
+   and a third thing in that corner is the one too many. Not overridable by the
+   setting, which the hint beside it says. */
 @media (max-width: 46rem) {
   #map .maplibregl-ctrl-scale {
     display: none;

@@ -18,6 +18,7 @@ import { Imports } from './imports'
 import { carryOldSettings } from './legacy'
 import {
   applyBorders,
+  applyScale,
   applyFogOpacity,
   applyMapTheme,
   applyView,
@@ -26,6 +27,7 @@ import {
   buildStyle,
   createMap,
   getBordersVisible,
+  getScaleVisible,
   getFogOpacity,
   getHeatOpacity,
   openArchive,
@@ -33,6 +35,7 @@ import {
   setArchiveVisible,
   applyHeatOpacity,
   setBordersVisible,
+  setScaleVisible,
   setFogOpacity,
   setHeatOpacity,
   type MapSetup,
@@ -705,6 +708,13 @@ async function start(): Promise<void> {
   const borders = element<HTMLInputElement>('show-borders')
   borders.checked = getBordersVisible()
   borders.addEventListener('change', () => setBordersVisible(map, borders.checked))
+
+  // A class on the container rather than a style layer, so unlike the borders
+  // it needs no reapplying after a restyle.
+  const scale = element<HTMLInputElement>('show-scale')
+  scale.checked = getScaleVisible()
+  scale.addEventListener('change', () => setScaleVisible(map, scale.checked))
+  applyScale(map)
 
   const fogColour = wireFogColour(map, options)
 

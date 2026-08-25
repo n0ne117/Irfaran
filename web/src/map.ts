@@ -30,6 +30,7 @@ const FOG_LAYER = 'irfaran-fog'
 const BORDERS_LAYER = 'irfaran-borders'
 const FOG_OPACITY_KEY = 'irfaran.fog.opacity'
 const BORDERS_KEY = 'irfaran.borders'
+const SCALE_KEY = 'irfaran.scale'
 const HEAT_KEY = 'irfaran.trail.opacity'
 const TRAIL_LAYER = 'irfaran-trail'
 
@@ -172,6 +173,36 @@ export function applyBorders(map: MapLibreMap): void {
     getBordersVisible() ? 'visible' : 'none',
   )
 }
+
+/**
+ * Whether the scale bar is drawn.
+ *
+ * On unless it was explicitly turned off. Applied as a class on the map
+ * container rather than by adding and removing the control, because the
+ * control is DOM rather than a style layer - so this survives a restyle for
+ * free, and turning it back on costs no re-measuring.
+ */
+export function getScaleVisible(): boolean {
+  try {
+    return window.localStorage.getItem(SCALE_KEY) !== 'false'
+  } catch {
+    return true
+  }
+}
+
+export function setScaleVisible(map: MapLibreMap, visible: boolean): void {
+  try {
+    window.localStorage.setItem(SCALE_KEY, String(visible))
+  } catch {
+    /* a preference that cannot be stored is still worth applying now */
+  }
+  applyScale(map)
+}
+
+export function applyScale(map: MapLibreMap): void {
+  map.getContainer().classList.toggle('map-scale-off', !getScaleVisible())
+}
+
 
 export function setFogOpacity(map: MapLibreMap, opacity: number): void {
   const clamped = Math.max(0, Math.min(1, opacity))

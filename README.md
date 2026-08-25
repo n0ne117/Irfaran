@@ -49,7 +49,7 @@ Delete both caches, run a rebuild, get byte-identical output. That means the who
 - One button hides every pin and brings them back, for when a few hundred of them are covering the map they were dropped on
 - Search, as you type: your own pins by title, tag, label, folder or who was there, and your tracks by name or year — or paste `27.74367, -15.58338`, or the degrees-minutes-seconds a map site gives you, and fly there with the option to keep the spot as a pin. Plus Codes too, full or short. Optionally the basemap's own place names and points of interest, read out of the archive once and searched offline. Each kind has its own switch under Settings, Search, and only pins and coordinates start on. "This view" narrows any search to what is on screen. Read-only, so it needs no token
 - Review before anything automatic reaches the map: a workout tracker or a phone hands over what it has, it waits in a holding pen, and you see each candidate on the map on its own, trim the ends, leave a leg out, rename it, then accept or discard. On by default, one switch per source under Settings, Review
-- A scale bar in the corner, metric, that shortens as you go north the way it should
+- A scale bar in the corner, metric, that shortens as you go north the way it should — switchable off under Appearance
 - Independent light/dark themes for the interface and the map
 
 ## Quick start

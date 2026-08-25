@@ -11,6 +11,15 @@ Entries are written for someone reading the release page, not for someone readin
 
 Nothing yet.
 
+## [0.18.12] - 2026-08-25
+
+### Added
+- **The scale bar can be switched off**, under Settings → Appearance, beside the country borders. On by default; the choice is remembered in the browser and survives a reload, like the fog thickness and the borders.
+
+  Applied as a class on the map container rather than by adding and removing the control, because the control is DOM rather than a style layer — so unlike the borders it needs no reapplying every time the map is restyled.
+
+  It stays hidden below 46rem whatever the setting says, since the time bar and the attribution already share that edge on a narrow screen, and the hint beside the switch says so rather than leaving somebody to wonder why a ticked box shows nothing.
+
 ## [0.18.11] - 2026-08-25
 
 ### Added

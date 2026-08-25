@@ -230,6 +230,29 @@ class TestTheScaleBar:
         for token in ("var(--line)", "var(--muted)", "var(--panel)"):
             assert token in block, f"the scale bar hard-codes a colour, not {token}"
 
+    def test_it_can_be_switched_off(self) -> None:
+        text = source("map.ts")
+        assert "export function getScaleVisible(" in text
+        assert "export function setScaleVisible(" in text
+        markup = (WEB / "index.html").read_text()
+        assert 'id="show-scale"' in markup
+
+    def test_the_choice_survives_a_reload(self) -> None:
+        body = body_of(source("map.ts"), "export function getScaleVisible(")
+        assert "localStorage" in body
+
+    def test_off_beats_the_theming_rule(self) -> None:
+        # The rule that themes it needs #map to win at all, so the rule that
+        # hides it needs one more step than that.
+        css = (WEB / "src" / "style.css").read_text()
+        assert "#map.map-scale-off .maplibregl-ctrl-scale" in css
+
+    def test_it_survives_a_restyle_without_being_reapplied(self) -> None:
+        # A class on the container, not a style layer - so unlike the borders it
+        # does not have to be put back every time the map is restyled.
+        body = body_of(source("map.ts"), "export function applyScale(")
+        assert "getContainer()" in body and "classList" in body
+
     def test_it_keeps_maplibres_open_topped_bracket(self) -> None:
         # The bar reads as something measuring the ground underneath it rather
         # than as a label in a box, and that is the missing top border.
