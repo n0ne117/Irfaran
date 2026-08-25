@@ -175,6 +175,21 @@ def sync_due_trackers() -> list[str]:
             try:
                 result = trackers.sync(conn, name)
                 done.append(f"{name}: {result.summary()}")
+
+                # The timer used to write nothing here, so a sync that ran
+                # while nobody was looking - which is every sync the timer
+                # does - left its trace in the tracker's own status line and
+                # nowhere in History. That is exactly the tab somebody opens
+                # to ask what arrived while they were away.
+                if result.changed:
+                    history.record(
+                        conn,
+                        "source",
+                        f"sync:{name}",
+                        f"{name}: {result.summary()}",
+                        trackers.history_detail(result.as_dict()),
+                    )
+
                 if result.tiles:
                     # Hand it to the queue rather than rendering here: the queue
                     # is the one place that knows whether a render is already
@@ -183,6 +198,9 @@ def sync_due_trackers() -> list[str]:
             except trackers.TrackerError as exc:
                 with db.transaction(conn):
                     trackers.put(conn, name, "last_error", str(exc))
+                    # A key that was revoked while nobody was watching is the
+                    # single most useful thing this whole tab could tell you.
+                    history.record(conn, "error", f"sync:{name}", str(exc))
                     # Stamped even on failure, or a server that cannot reach
                     # the service would retry on every single tick.
                     trackers.put(
@@ -1197,7 +1215,7 @@ def sync_tracker(name: str, conn: sqlite3.Connection = Depends(get_conn)):
                     history.record(
                         own, "source", f"sync:{name}",
                         f"{name}: {step.get('summary')}",
-                        {"imported": step.get("imported"), "no_gps": step.get("no_gps")},
+                        trackers.history_detail(step),
                     )
                 yield json.dumps(step) + "\n"
         except trackers.TrackerError as exc:

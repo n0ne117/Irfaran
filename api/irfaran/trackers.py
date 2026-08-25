@@ -40,7 +40,7 @@ import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
-from typing import Iterator
+from typing import Iterator, Mapping
 
 from irfaran import db, review
 from irfaran.ingest import common
@@ -395,6 +395,18 @@ class SyncResult:
             "notes": self.notes[:10],
         }
 
+    @property
+    def changed(self) -> bool:
+        """Did this sync do anything worth a line in History?
+
+        A check that found nothing is a status, not an event. The tracker's own
+        last_sync and last_result under Data sources already answer "is the
+        timer running"; History answers "what happened", and one line every
+        twelve hours saying "nothing" would crowd out the answer in a log that
+        is capped at 2,000 entries.
+        """
+        return bool(self.imported or self.held or self.failed)
+
     def summary(self) -> str:
         if self.held:
             text = f"{self.held} waiting to be reviewed"
@@ -413,6 +425,18 @@ class SyncResult:
         if self.failed:
             text += f", {self.failed} failed"
         return text
+
+
+#: The counts History keeps about a sync. Named here rather than written out
+#: at each call site: the timed path and the button used to build slightly
+#: different dictionaries, which is the kind of difference that only shows up
+#: when somebody compares two entries and finds one is missing a field.
+HISTORY_FIELDS = ("imported", "held", "already_here", "no_gps", "failed")
+
+
+def history_detail(counts: Mapping[str, object]) -> dict[str, object]:
+    """The detail for a History line, from a SyncResult.as_dict or a step."""
+    return {key: counts.get(key, 0) for key in HISTORY_FIELDS}
 
 
 def oldest_to_ask_for(conn: sqlite3.Connection, name: str) -> date:

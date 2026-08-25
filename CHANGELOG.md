@@ -11,6 +11,18 @@ Entries are written for someone reading the release page, not for someone readin
 
 Nothing yet.
 
+## [0.18.10] - 2026-08-25
+
+### Fixed
+- **A timed tracker sync now writes to History.** Pressing "Sync now" always recorded a line; the timer recorded nothing — which is the wrong way round, because the timer is the one that runs while nobody is looking, and History is the tab somebody opens to ask what arrived while they were away. Found on a real instance: an activity had been fetched and held at 06:54, and the only trace of it anywhere was the tracker's own status line.
+
+  A failure is recorded too. A key revoked overnight is the single most useful thing that tab could tell you, and until now it lived in `last_error` under Data sources and nowhere else.
+
+- **Quiet checks stay quiet.** A sync that found nothing writes no line. Coalescing only folds entries fifteen minutes apart, so a twelve-hourly timer would never fold — recording every check would be one line saying "nothing new" twice a day forever, competing for room in a log capped at two thousand entries. Whether the timer is running is a *status*, and the tracker's own `last_sync` and `last_result` are where a status belongs.
+
+### Note
+The two paths were building slightly different detail dictionaries — the button kept `imported` and `no_gps`, and nothing kept `held`, which is the count that matters now that activities wait to be reviewed. Both now go through one named list of fields, so an entry cannot quietly be missing one, and a new counter on a sync result cannot silently widen every log line either.
+
 ## [0.18.9] - 2026-08-25
 
 ### Added

@@ -191,6 +191,124 @@ def configured(conn, enabled: bool = True) -> None:
 # ------------------------------------------------------------------------ auth
 
 
+class TestTheTimerWritesHistory:
+    """Reported as: a timed sync leaves no trace in History.
+
+    Pressing "Sync now" recorded a line; the timer recorded nothing. Which is
+    exactly the wrong way round - the timer is the one that runs while nobody
+    is looking, and History is the tab somebody opens to ask what arrived
+    while they were away.
+
+    Quiet checks stay quiet. Coalescing only folds entries fifteen minutes
+    apart, so a twelve-hourly timer would never fold: recording every "nothing
+    new" would be one line twice a day forever, competing for room in a log
+    capped at two thousand. Whether the timer is running is a status, and the
+    tracker's own line under Data sources is where a status belongs.
+    """
+
+    def ready(self, conn, gated: bool) -> None:
+        from irfaran import review
+
+        conn.execute("DELETE FROM log")
+        configured(conn)
+        trackers.put(conn, "intervals", "sync_hours", "12")
+        trackers.put(conn, "intervals", "last_sync", "")
+        review.set_gated(conn, trackers.INGEST_SOURCE, gated)
+        # Its own connection, so it has to be able to see all of this.
+        conn.commit()
+
+    def lines(self, conn, category: str | None = None) -> list[dict]:
+        from irfaran import history
+
+        return history.recent(conn, 20, category)
+
+    def test_a_held_activity_is_recorded(self, conn, monkeypatch) -> None:
+        from irfaran import main
+
+        self.ready(conn, gated=True)
+        serve(monkeypatch, FakeService([an_activity()], {"i1000": streams_for()}))
+
+        assert main.sync_due_trackers()
+        written = self.lines(conn, "source")
+        assert len(written) == 1
+        assert "waiting to be reviewed" in written[0]["message"]
+        assert written[0]["action"] == "sync:intervals"
+
+    def test_an_imported_activity_is_recorded(self, conn, monkeypatch) -> None:
+        from irfaran import main
+
+        self.ready(conn, gated=False)
+        serve(monkeypatch, FakeService([an_activity()], {"i1000": streams_for()}))
+
+        assert main.sync_due_trackers()
+        assert any("1 new" in line["message"] for line in self.lines(conn, "source"))
+
+    def test_a_quiet_check_stays_quiet(self, conn, monkeypatch) -> None:
+        from irfaran import main
+
+        self.ready(conn, gated=True)
+        serve(monkeypatch, FakeService([]))
+
+        assert main.sync_due_trackers()
+        assert self.lines(conn, "source") == []
+
+    def test_but_the_tracker_still_says_it_ran(self, conn, monkeypatch) -> None:
+        # Which is the point of not recording it: the status is somewhere else.
+        from irfaran import main
+
+        self.ready(conn, gated=True)
+        serve(monkeypatch, FakeService([]))
+        main.sync_due_trackers()
+
+        fresh = db.connect()
+        try:
+            assert trackers.get(fresh, "intervals", "last_sync")
+            assert trackers.get(fresh, "intervals", "last_result")
+        finally:
+            fresh.close()
+
+    def test_a_failure_while_nobody_was_watching_is_recorded(
+        self, conn, monkeypatch
+    ) -> None:
+        # A key revoked overnight is the single most useful thing this tab
+        # could tell somebody.
+        from irfaran import main
+
+        self.ready(conn, gated=True)
+
+        def refused(*args, **kwargs):
+            raise trackers.TrackerError("intervals.icu refused the API key.")
+
+        monkeypatch.setattr(trackers, "list_activities", refused)
+
+        assert main.sync_due_trackers()
+        written = self.lines(conn, "error")
+        assert len(written) == 1
+        assert "refused the API key" in written[0]["message"]
+
+    def test_both_paths_record_the_same_shape(self, conn, monkeypatch) -> None:
+        # The timed path and the button used to build different dictionaries,
+        # which only shows up when somebody compares two entries and finds one
+        # missing a field.
+        from irfaran import main
+
+        self.ready(conn, gated=True)
+        serve(monkeypatch, FakeService([an_activity()], {"i1000": streams_for()}))
+        main.sync_due_trackers()
+        # recent() hands back the detail already parsed.
+        timed = self.lines(conn, "source")[0]["detail"]
+
+        assert set(timed) == set(trackers.HISTORY_FIELDS)
+        assert timed["held"] == 1
+
+    def test_the_detail_survives_a_result_gaining_a_field(self) -> None:
+        # history_detail picks what it wants rather than passing everything, so
+        # a new counter on SyncResult does not silently widen every log entry.
+        detail = trackers.history_detail({"imported": 2, "nonsense": 9})
+        assert detail["imported"] == 2 and "nonsense" not in detail
+        assert detail["held"] == 0
+
+
 class TestAuthentication:
     def test_basic_auth_uses_the_literal_username(self) -> None:
         """intervals.icu wants API_KEY as the username, not the athlete."""
