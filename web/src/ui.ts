@@ -161,21 +161,33 @@ export function wireTokenField(onChange: () => void): void {
   const state = element('token-state')
 
   const paint = () => {
+    // Only ever says something when there is something true to say. A token
+    // that is stored has already been checked against the server, because the
+    // only two things that store one check first. When there is none, the
+    // banner over the tabs is already saying so and rather more loudly.
     const token = getToken()
-    state.textContent = token
-      ? 'Token set in this browser.'
-      : 'No token set. Anything that changes data will be refused.'
-    state.dataset.state = token ? 'good' : 'warn'
+    state.textContent = token ? 'Token set in this browser.' : ''
+    state.dataset.state = token ? 'good' : ''
+    state.hidden = !token
   }
 
   input.value = getToken()
   acceptTokenPaste(input)
+
+  // Typing stores nothing and claims nothing.
+  //
+  // It used to store on every keystroke, which meant a single character read
+  // as "Token set in this browser" - and, once the interface started gating
+  // itself on having a token, a single character lifted the whole gate. Apply
+  // is the only thing that decides, because it is the only thing that has
+  // asked the server.
+  //
+  // Whatever the line said before the first keystroke is stale the moment
+  // there is one, so it goes.
   input.addEventListener('input', () => {
-    // Same forgiveness as the setup screen: a token has no whitespace in it,
-    // so anything pasted alongside it is not part of it.
-    setToken(tokenFrom(input.value))
-    paint()
-    onChange()
+    state.textContent = ''
+    state.dataset.state = ''
+    state.hidden = true
   })
 
   // Apply exists because storing on `input` alone is not enough.
@@ -194,6 +206,7 @@ export function wireTokenField(onChange: () => void): void {
     void (async () => {
       const candidate = tokenFrom(input.value)
       if (!candidate) {
+        state.hidden = false
         state.textContent = 'Paste the token first.'
         state.dataset.state = 'warn'
         return
@@ -201,24 +214,36 @@ export function wireTokenField(onChange: () => void): void {
 
       const previous = getToken()
       apply.disabled = true
+      state.hidden = false
       state.textContent = 'Checking with the server.'
       state.dataset.state = ''
-      setToken(candidate)
-
-      // A browser with storage blocked accepts setToken silently and hands
-      // back nothing, which would otherwise look like the token being wrong.
-      if (getToken() !== candidate) {
-        state.textContent =
-          'This browser will not let the page remember anything, so the token ' +
-          'cannot be kept. Private browsing usually does this.'
-        state.dataset.state = 'bad'
-        apply.disabled = false
-        return
-      }
 
       try {
+        // Checked before it is stored, and that order matters: storing first
+        // made a wrong token the stored one for as long as the round trip
+        // took, which is long enough for everything gated on having a token to
+        // unlock and lock again in front of somebody.
+        //
         // Harmless: it writes back the theme this browser already has.
-        await apiSend('PATCH', '/api/settings', { ui_theme: getUiTheme() })
+        await apiSend(
+          'PATCH',
+          '/api/settings',
+          { ui_theme: getUiTheme() },
+          { token: candidate },
+        )
+
+        setToken(candidate)
+
+        // A browser with storage blocked accepts setToken silently and hands
+        // back nothing, which would otherwise look like the token being wrong.
+        if (getToken() !== candidate) {
+          state.textContent =
+            'This browser will not let the page remember anything, so the ' +
+            'token cannot be kept. Private browsing usually does this.'
+          state.dataset.state = 'bad'
+          return
+        }
+
         state.textContent = 'Token accepted by the server and kept in this browser.'
         state.dataset.state = 'good'
         onChange()

@@ -2341,11 +2341,7 @@ kbd {
   color: var(--bad);
   font-size: 0.8rem;
   line-height: 1.45;
-}
-
-.token-banner .linky {
-  color: var(--bad);
-  font-weight: 600;
+  text-align: center;
 }
 
 /* What cannot work without a token. `inert` is what actually takes these out
@@ -2354,6 +2350,16 @@ kbd {
   opacity: 0.4;
   /* Belt and braces for a browser old enough not to know `inert`. */
   pointer-events: none;
+}
+
+/* Nothing gated may look live. `inert` swallows the click silently, so a
+   control that still carries a pointer cursor reads as broken rather than as
+   switched off - which is how four review switches came to look enabled while
+   doing nothing at all. The cursor is on the region, because inert children
+   do not get hover states of their own to hang it on. */
+[data-needs-token][inert],
+[data-needs-token][inert] * {
+  cursor: not-allowed;
 }
 
 /* No token, no drawing and nothing waiting to be reviewed. Hidden rather than

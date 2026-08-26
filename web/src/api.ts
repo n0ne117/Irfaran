@@ -154,9 +154,13 @@ export async function apiSend<T>(
   method: 'POST' | 'PATCH' | 'DELETE',
   path: string,
   body?: unknown,
-  options: { tokenOptional?: boolean } = {},
+  options: { tokenOptional?: boolean; token?: string } = {},
 ): Promise<T> {
-  const token = getToken()
+  // `token` is for checking one before it is stored. Without it the only way
+  // to ask the server whether a token works was to store it first, which meant
+  // a wrong token was briefly the stored one - long enough for everything
+  // gated on having a token to unlock and then lock again.
+  const token = options.token ?? getToken()
   if (!token && !options.tokenOptional) {
     throw new ApiError(
       401,

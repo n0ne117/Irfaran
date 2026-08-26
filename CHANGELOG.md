@@ -11,6 +11,24 @@ Entries are written for someone reading the release page, not for someone readin
 
 Nothing yet.
 
+## [0.18.16] - 2026-08-26
+
+### Fixed
+- **The token field no longer claims a token is set when one character is typed.** It stored on every keystroke — which was already confusing, and became worse once the interface started gating itself on having a token, because a single character lifted the entire gate. Typing now stores nothing and claims nothing; **Apply** is the only thing that decides, because it is the only thing that has asked the server. The status line clears the moment there is a keystroke, since whatever it said before is stale, and says nothing at all when there is nothing true to say.
+
+- **A wrong token no longer makes the banner blink away and back.** Apply stored the candidate *before* checking it, because the only way to ask the server whether a token works was to store it first. It is now handed to the request directly, so a token that the server refuses is never the stored one for even a moment — and the banner cannot disappear until a real token has been accepted.
+
+- **The review switches are properly locked.** They were marked on the checkbox itself, which dims a twelve-pixel box and leaves the words beside it at full brightness — functionally locked, visibly not. The whole label is marked now.
+
+- **Nothing gated looks live.** `inert` swallows a click in silence, so anything still carrying a pointer cursor reads as broken rather than as switched off. Gated regions now say `not-allowed`.
+
+### Changed
+- **The crimson banner is centred and has lost its button.** It points at Security in words instead.
+- **The Tracks and Draw settings are gated.** Neither can achieve anything without a token: drawing is refused outright, and the trail ramp is baked into tiles the server renders.
+
+### Note
+Two browser-only controls are now gated by association, which is worth writing down rather than discovering: the **fog thickness** and the **trail strength** sliders are applied on the GPU and reach no server, but they sit inside the Fog and Tracks sections — gated because the fog *colour* and the trail *ramp* do reach one. Separating them means splitting those two sections in two, which is a layout decision rather than a bug fix. The borders and the scale bar remain adjustable without a token.
+
 ## [0.18.15] - 2026-08-26
 
 ### Added

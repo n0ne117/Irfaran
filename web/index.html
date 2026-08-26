@@ -395,8 +395,7 @@
         <strong>No API token is set.</strong>
         This browser can look at the map and nothing else — drawing, pins,
         imports and every setting that reaches the server are switched off
-        until one is entered.
-        <button id="token-missing-fix" type="button" class="linky">Set it now</button>
+        until one is entered under Security.
       </p>
 
       <nav id="tabs" class="tabs" role="tablist">
@@ -484,7 +483,7 @@
             <p id="fog-colour-status" class="notice" hidden></p>
           </section>
 
-          <section>
+          <section data-needs-token>
             <h2>Tracks</h2>
             <label class="field">
               <span>Individual track lines</span>
@@ -584,7 +583,7 @@
         </div>
 
         <div class="tab-panel" data-tab="draw" hidden>
-          <section>
+          <section data-needs-token>
             <h2>Brush</h2>
             <label class="field">
               <span>Radius, metres</span>
@@ -600,7 +599,7 @@
             </p>
           </section>
 
-          <section>
+          <section data-needs-token>
             <h2>Drawing on the map</h2>
             <p class="hint">
               Use the pencil at the top right of the map to open the drawing
@@ -920,20 +919,20 @@
               the delay.
             </p>
 
-            <label class="check">
-              <input id="review-workout" type="checkbox" checked data-needs-token />
+            <label class="check" data-needs-token>
+              <input id="review-workout" type="checkbox" checked />
               <span>Workout trackers — one review per activity</span>
             </label>
-            <label class="check">
-              <input id="review-overland" type="checkbox" checked data-needs-token />
+            <label class="check" data-needs-token>
+              <input id="review-overland" type="checkbox" checked />
               <span>Overland</span>
             </label>
-            <label class="check">
-              <input id="review-owntracks" type="checkbox" checked data-needs-token />
+            <label class="check" data-needs-token>
+              <input id="review-owntracks" type="checkbox" checked />
               <span>OwnTracks</span>
             </label>
-            <label class="check">
-              <input id="review-ha" type="checkbox" checked data-needs-token />
+            <label class="check" data-needs-token>
+              <input id="review-ha" type="checkbox" checked />
               <span>Home Assistant</span>
             </label>
             <p class="hint">

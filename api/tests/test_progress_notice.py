@@ -241,6 +241,49 @@ class TestTheDropCursor:
             )
 
 
+class TestTheTokenFieldOnlyClaimsWhatItKnows:
+    """Reported as: one character reads as "token set in this browser".
+
+    It stored on every keystroke. Once the interface started gating itself on
+    having a token, that meant one character also lifted the entire gate.
+    """
+
+    def test_typing_stores_nothing(self) -> None:
+        text = source("ui.ts")
+        start = text.index("input.addEventListener('input'")
+        handler = text[start : text.index("})", start)]
+        assert "setToken" not in handler, "typing still stores a token"
+        assert "onChange" not in handler, "typing still tells the rest of the app"
+
+    def test_typing_clears_whatever_was_said(self) -> None:
+        # Whatever the line said before the first keystroke is stale after it.
+        text = source("ui.ts")
+        start = text.index("input.addEventListener('input'")
+        handler = text[start : text.index("})", start)]
+        assert "state.textContent = ''" in handler
+
+    def test_the_line_says_nothing_when_there_is_nothing_to_say(self) -> None:
+        # Anchored inside wireTokenField: `const paint = () => {` also appears
+        # in wireZoom, earlier in the file, and body_of takes the first match.
+        text = source("ui.ts")
+        body = body_of(text[text.index("export function wireTokenField(") :],
+                       "  const paint = () => {")
+        assert "state.hidden = !token" in body
+
+    def test_apply_checks_before_it_stores(self) -> None:
+        # Storing first made a wrong token the stored one for as long as the
+        # round trip took - long enough for the banner to blink away and back.
+        text = source("ui.ts")
+        checked = text.index("{ token: candidate }")
+        stored = text.index("setToken(candidate)")
+        assert checked < stored, "the token is stored before the server sees it"
+
+    def test_api_send_can_try_a_token_without_it_being_stored(self) -> None:
+        # Not through body_of: apiSend's own signature contains braces, and it
+        # stops at the first balanced pair it finds.
+        assert "options.token ?? getToken()" in source("api.ts")
+
+
 class TestOpenInSomebodyElsesMap:
     """A pin's coordinates handed to a service that knows about routing.
 
@@ -315,6 +358,53 @@ class TestReadOnlyWithoutAToken:
         block = css[css.index(".token-banner {") :][:400]
         assert "var(--bad)" in block, "the banner is not the colour of a problem"
 
+    def test_the_banner_is_centred_and_has_no_button(self) -> None:
+        css = (WEB / "src" / "style.css").read_text()
+        assert "text-align: center" in css[css.index(".token-banner {") :][:400]
+        markup = self.markup()
+        start = markup.index('id="token-missing"')
+        assert "<button" not in markup[start : markup.index("</p>", start)]
+
+    def test_nothing_gated_looks_live(self) -> None:
+        # inert swallows a click silently, so a control that still carries a
+        # pointer cursor reads as broken rather than as switched off - which is
+        # how four review switches came to look enabled while doing nothing.
+        css = (WEB / "src" / "style.css").read_text()
+        assert "cursor: not-allowed" in css[css.index("[data-needs-token][inert]") :][:600]
+
+    def test_a_checkbox_is_gated_by_its_label(self) -> None:
+        # Marking the input alone dims a twelve-pixel box and leaves the words
+        # beside it at full brightness, which is what "not really locked" was.
+        markup = self.markup()
+        for which in ("workout", "overland", "owntracks", "ha"):
+            index = markup.index(f'id="review-{which}"')
+            label = markup.rindex("<label", 0, index)
+            assert "data-needs-token" in markup[label : markup.index(">", label)], which
+
+    def test_drawing_and_track_settings_are_gated(self) -> None:
+        # Neither can do anything without a token: drawing is refused, and the
+        # trail ramp is baked into tiles the server renders.
+        gated = gated_ids(self.markup())
+        for locked in ("draw-radius", "draw-layers", "trail-ramp",
+                       "trail-style", "trail-popups", "heat-opacity"):
+            assert locked in gated, f"{locked} is not behind the gate"
+
+    def test_some_of_the_view_is_still_yours(self) -> None:
+        # The borders and the scale bar are drawn by this browser and stay
+        # adjustable without a token.
+        #
+        # The two opacity sliders are not in this list, and that is worth
+        # knowing rather than assuming: fog thickness and trail strength are
+        # also browser-only, but they sit inside the Fog and Tracks sections,
+        # which are gated because the fog *colour* and the trail *ramp* are
+        # baked into tiles the server renders. Gated by association, and only
+        # separable by splitting those sections in two.
+        gated = gated_ids(self.markup())
+        for free in ("show-borders", "show-scale"):
+            assert free not in gated, f"{free} is gated and needs no token"
+        for swept_up in ("fog-opacity", "heat-opacity"):
+            assert swept_up in gated
+
     def test_it_is_above_the_tabs_so_every_tab_shows_it(self) -> None:
         markup = self.markup()
         assert markup.index('id="token-missing"') < markup.index('id="tabs"')
@@ -375,22 +465,13 @@ class TestReadOnlyWithoutAToken:
                 f"{writes} writes to the server and is not behind the gate"
             )
 
-    def test_browser_only_settings_are_left_alone(self) -> None:
-        # Fog thickness, borders, the scale bar, trail popups - none of these
-        # touch the server, and gating them would leave a read-only viewer
-        # unable to adjust their own view.
+    def test_reading_is_never_gated(self) -> None:
+        # Refreshing history, copying diagnostics and entering the token are
+        # all things a browser with no token must be able to do.
         gated = gated_ids(self.markup())
-        for local in (
-            "show-borders",
-            "show-scale",
-            "trail-popups",
-            "trail-cap-notice",
-            "settings-token",
-            "token-apply",
-            "history-refresh",
-            "diagnostics-copy",
-        ):
-            assert local not in gated, f"{local} needs no token and is gated anyway"
+        for free in ("settings-token", "token-apply", "history-refresh",
+                     "diagnostics-copy", "maps-provider"):
+            assert free not in gated, f"{free} needs no token and is gated anyway"
 
     def test_a_pin_popup_offers_nothing_it_cannot_do(self) -> None:
         body = body_of(source("places.ts"), "  private popupFor(")

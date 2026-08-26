@@ -664,7 +664,7 @@ async function start(): Promise<void> {
   const watchers: ((tab: string) => void)[] = [
     (tab) => progress.watch(tab === 'progress'),
   ]
-  const showTab = wireTabs('tabs', (tab) => {
+  wireTabs('tabs', (tab) => {
     for (const watcher of watchers) watcher(tab)
   })
 
@@ -674,11 +674,6 @@ async function start(): Promise<void> {
   wirePart('token-gate', () => {
     applyTokenGate()
     onTokenChange(() => applyTokenGate())
-    element('token-missing-fix').addEventListener('click', () => {
-      sheets.open('panel')
-      showTab('security')
-      element<HTMLInputElement>('settings-token').focus()
-    })
   })
   wireZoom(map as never)
   watchLifecycle(map)
