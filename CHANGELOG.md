@@ -11,6 +11,16 @@ Entries are written for someone reading the release page, not for someone readin
 
 Nothing yet.
 
+## [0.18.13] - 2026-08-26
+
+### Fixed
+- **Notices over the map stack instead of overlapping.** Reported as the track count sitting on top of the drawing progress bar, which is exactly what it was doing: all four of them — the wiring error, the map error, the track count and the progress bar — were pinned to the same coordinates, `bottom: 5.5rem` and centred, so any two visible at once occupied the same space.
+
+  They now share one column anchored by its bottom edge, which means the **last one never moves when something appears above it**. The progress bar is last, because it is the one being watched. The gaps between them are still map: only the boxes take clicks.
+
+### Added
+- **The track count can be switched off**, under Settings → Appearance with the other trail options. Only so many tracks are sent for one viewport, and a line above the time bar says so when the rest are left out — useful once, and then not. Switching it off changes nothing about what is drawn: the cap is a bound on the response rather than a preference, and this only stops mentioning it.
+
 ## [0.18.12] - 2026-08-25
 
 ### Added

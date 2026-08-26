@@ -202,6 +202,73 @@ class TestTheDropCursor:
             )
 
 
+class TestNoticesStackRatherThanOverlap:
+    """Reported as: the track count sits on top of the drawing progress bar.
+
+    They were four boxes pinned to the same coordinates - `bottom: 5.5rem`,
+    centred - so any two of them visible at once occupied the same space.
+    """
+
+    def test_the_map_notices_share_one_column(self) -> None:
+        markup = (WEB / "index.html").read_text()
+        start = markup.index('<div class="notices">')
+        end = markup.index("</div>", start)
+        column = markup[start:end]
+        for one in ("wiring-error", "map-error", "trail-notice", "draw-status"):
+            assert f'id="{one}"' in column, f"{one} is not in the column"
+
+    def test_the_progress_bar_is_last(self) -> None:
+        # The column is anchored by its bottom edge, so the last child is the
+        # one that does not move when something appears above it - and the
+        # progress bar is the one being watched.
+        markup = (WEB / "index.html").read_text()
+        start = markup.index('<div class="notices">')
+        column = markup[start : markup.index("</div>", start)]
+        assert column.rindex('id="draw-status"') > column.rindex('id="trail-notice"')
+
+    def test_they_are_laid_out_rather_than_stacked(self) -> None:
+        css = (WEB / "src" / "style.css").read_text()
+        block = css[css.index(".notices {") :][:500]
+        assert "flex-direction: column" in block
+
+    def test_a_notice_in_the_column_stops_positioning_itself(self) -> None:
+        css = (WEB / "src" / "style.css").read_text()
+        block = css[css.index(".notices .notice {") :][:300]
+        assert "position: static" in block
+
+    def test_the_gaps_between_them_are_still_map(self) -> None:
+        css = (WEB / "src" / "style.css").read_text()
+        block = css[css.index(".notices {") :][:600]
+        assert "pointer-events: none" in block
+        assert "pointer-events: auto" in css[css.index(".notices .notice {") :][:300]
+
+    def test_settings_notices_are_left_alone(self) -> None:
+        # `.notice` is also used inside the settings sheet, where it is
+        # positioned against the sheet rather than the map. Only the ones in
+        # the column change.
+        markup = (WEB / "index.html").read_text()
+        start = markup.index('<div class="notices">')
+        column = markup[start : markup.index("</div>", start)]
+        for elsewhere in ("fog-colour-status", "review-gates-status"):
+            assert elsewhere not in column
+
+
+class TestTheTrackCountCanBeSilenced:
+    def test_it_is_a_preference(self) -> None:
+        text = source("trails.ts")
+        assert "export function getTrailCapNotice(" in text
+        assert 'id="trail-cap-notice"' in (WEB / "index.html").read_text()
+
+    def test_it_only_gates_the_saying_not_the_drawing(self) -> None:
+        # The cap is a bound on the response, not a preference. Switching this
+        # off must not change what is fetched or drawn.
+        text = source("trails.ts")
+        assert "collection.truncated && getTrailCapNotice()" in text
+        body = body_of(text, "  async refresh(): Promise<void> {")
+        assert "getTrailCapNotice" in body
+        assert "cap=" not in body and "capNotice" not in body.replace("getTrailCapNotice", "")
+
+
 class TestTheScaleBar:
     """The one thing a map is expected to have that this did not.
 

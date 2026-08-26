@@ -36,6 +36,7 @@ export type TrailStyle = 'auto' | 'detailed' | 'single' | 'faint' | 'off'
 
 const STYLE_KEY = 'irfaran.trails.style'
 const POPUP_KEY = 'irfaran.trails.popups'
+const CAP_NOTICE_KEY = 'irfaran.trails.capnotice'
 
 /**
  * Tracks in view above which "auto" stops drawing them individually.
@@ -188,6 +189,29 @@ export function getTrailStyle(): TrailStyle {
 export function setTrailStyle(value: TrailStyle): void {
   try {
     window.localStorage.setItem(STYLE_KEY, value)
+  } catch {
+    /* a preference that cannot be stored is still worth applying now */
+  }
+}
+
+/**
+ * Whether to mention that a viewport held more tracks than were drawn.
+ *
+ * On unless it was explicitly turned off. Switching it off changes nothing
+ * about what is drawn - the cap is a bound on the response, not a preference -
+ * it only stops saying so, which is a reasonable thing to want once you know.
+ */
+export function getTrailCapNotice(): boolean {
+  try {
+    return window.localStorage.getItem(CAP_NOTICE_KEY) !== 'false'
+  } catch {
+    return true
+  }
+}
+
+export function setTrailCapNotice(value: boolean): void {
+  try {
+    window.localStorage.setItem(CAP_NOTICE_KEY, String(value))
   } catch {
     /* a preference that cannot be stored is still worth applying now */
   }
@@ -524,7 +548,7 @@ export class Trails {
       this.collection = collection
       this.restyle(collection.features.length)
       this.onStatus(
-        collection.truncated
+        collection.truncated && getTrailCapNotice()
           ? `Showing the first ${collection.cap} tracks here. Zoom in for the rest.`
           : '',
       )

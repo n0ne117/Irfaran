@@ -56,8 +56,10 @@ import { Sources } from './sources'
 import { Trackers } from './trackers'
 import { Timeline } from './timeline'
 import {
+  getTrailCapNotice,
   getTrailPopups,
   getTrailStyle,
+  setTrailCapNotice,
   setTrailPopups,
   setTrailStyle,
   Trails,
@@ -698,6 +700,15 @@ async function start(): Promise<void> {
     .then((body) => rampButtons((body.settings?.trail_ramp ?? 'ember') as TrailRamp))
     .catch(() => {})
     .finally(() => (rampReady = true))
+
+  // Switching it off stops it being mentioned; it does not draw any more of
+  // them. A refresh so the line goes away at once rather than at the next pan.
+  const capNotice = element<HTMLInputElement>('trail-cap-notice')
+  capNotice.checked = getTrailCapNotice()
+  capNotice.addEventListener('change', () => {
+    setTrailCapNotice(capNotice.checked)
+    void trails.refresh()
+  })
 
   const trailPopups = element<HTMLInputElement>('trail-popups')
   trailPopups.checked = getTrailPopups()

@@ -11,11 +11,6 @@
   <body>
     <div id="map"></div>
 
-    <!-- Says so when a panel fails to wire itself up. One component throwing
-         used to take out every handler wired after it, silently: a stale id in
-         one place stopped the Import button reacting, with nothing on screen and
-         nothing in the interface to suggest why. -->
-    <p id="wiring-error" class="notice" data-state="bad" hidden></p>
 
     <!-- The brush footprint, at ground scale, following the cursor. -->
     <div id="draw-cursor" class="draw-cursor" hidden></div>
@@ -181,11 +176,24 @@
       <span id="zoom-label" class="zoom-label">z2</span>
     </div>
 
-    <p id="draw-status" class="notice" hidden></p>
-    <p id="trail-notice" class="notice" hidden></p>
-    <p id="map-error" class="notice notice-bad" hidden>
-      The map could not start. Check the browser console.
-    </p>
+    <!-- Everything that talks to you over the map, in one column above the
+         time bar. They used to be four boxes pinned to the same coordinates,
+         so a track count and a drawing progress bar simply sat on top of each
+         other. Last in the list is closest to the time bar and therefore the
+         one whose position never moves: the progress bar, which is the one
+         being watched. -->
+    <div class="notices">
+      <!-- Says so when a panel fails to wire itself up. One component throwing
+           used to take out every handler wired after it, silently: a stale id
+           in one place stopped the Import button reacting, with nothing on
+           screen and nothing in the interface to suggest why. -->
+      <p id="wiring-error" class="notice" data-state="bad" hidden></p>
+      <p id="map-error" class="notice notice-bad" hidden>
+        The map could not start. Check the browser console.
+      </p>
+      <p id="trail-notice" class="notice" hidden></p>
+      <p id="draw-status" class="notice" hidden></p>
+    </div>
 
     <!-- Places, a sidebar rather than a sheet: it stays open while you work
          on the map, which a sheet covering the middle of it cannot do. -->
@@ -489,6 +497,17 @@
               <input id="trail-popups" type="checkbox" checked />
               <span>Show track details when one is clicked</span>
             </label>
+
+            <label class="check">
+              <input id="trail-cap-notice" type="checkbox" checked />
+              <span>Say when there are more tracks than are drawn</span>
+            </label>
+            <p class="hint">
+              Only so many tracks are sent for one viewport, and by default a
+              line above the time bar says so when the rest have been left out.
+              Turning this off does not draw any more of them — it stops
+              mentioning it.
+            </p>
 
             <h3>Trail colouring</h3>
             <label class="field">

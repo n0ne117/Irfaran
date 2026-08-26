@@ -2300,3 +2300,29 @@ kbd {
     display: none;
   }
 }
+
+/* Everything that talks to you over the map, in one column above the time bar.
+   They used to be four boxes pinned to the same coordinates, so a track count
+   and a drawing progress bar sat on top of each other.
+
+   The container is anchored by its bottom edge, so the last child never moves
+   when something appears above it - which is why the progress bar is last. */
+.notices {
+  position: absolute;
+  bottom: 5.5rem;
+  left: 50%;
+  z-index: 3;
+  display: flex;
+  transform: translateX(-50%);
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  /* The gaps between them are still map. Only the boxes take clicks. */
+  pointer-events: none;
+}
+
+.notices .notice {
+  position: static;
+  transform: none;
+  pointer-events: auto;
+}
