@@ -11,6 +11,23 @@ Entries are written for someone reading the release page, not for someone readin
 
 Nothing yet.
 
+## [0.18.15] - 2026-08-26
+
+### Added
+- **A clicked pin offers to open the same spot in another map.** Irfaran knows where you were and nothing about where you are going — routing, opening hours, street view, what a place is called this year all live in the big map services, and a pair of coordinates in a URL is the cheapest possible bridge to them.
+
+  The service is picked under Settings → Places: **OpenStreetMap, Google Maps or Apple Maps**. A browser preference rather than an archive-wide one, deliberately — Apple Maps is the obvious choice on an iPhone and the wrong one on the Linux box beside it, and one setting could only ever be right on one of them. `maps.apple.com` opens the app on an Apple device and a web map anywhere else, so a single link covers both.
+
+  **Only the coordinates are sent.** Not the pin's name, not its label, not who was there — those are the parts worth keeping, and a query string is the least private place in computing. The link also carries `rel="noreferrer"`, because a self-hosted instance's hostname is the one thing on that page nobody else needs to learn. And it is an anchor rather than a button, so middle-click and ctrl-click do what they do everywhere else.
+
+  It works without a token: opening a pair of coordinates in OpenStreetMap is something a read-only browser can perfectly well do, so the link is built before the gate that hides Edit and Delete.
+
+### Fixed
+- **The pin tree is usable without a token again.** Yesterday's read-only work marked the whole tree as needing one, which was too broad: clicking a pin's name flies the map to it and collapsing a folder is a local nicety, and neither touches the server. The controls that *do* write — rename, nest, hide, delete a folder — are now simply not built without a token, the same way a pin's Edit and Delete are not. Found by trying to click a pin while testing something else.
+
+### Note
+Changing the map service repaints the pins, and it has to. A popup's contents are built when its marker is created, so the first version stored the preference correctly and every pin went on offering the previous service until the next reload — which is indistinguishable from a setting that does nothing.
+
 ## [0.18.14] - 2026-08-26
 
 ### Added

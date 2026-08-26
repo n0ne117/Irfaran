@@ -241,6 +241,63 @@ class TestTheDropCursor:
             )
 
 
+class TestOpenInSomebodyElsesMap:
+    """A pin's coordinates handed to a service that knows about routing.
+
+    The one thing to be careful about is what else goes in the URL. A query
+    string is the least private place in computing, and a pin's name, label and
+    who-was-there are exactly the parts worth keeping.
+    """
+
+    def test_only_the_coordinates_are_sent(self) -> None:
+        body = body_of(source("maps.ts"), "export function externalUrl(")
+        for private in ("name", "label", "people", "tags", "title"):
+            assert private not in body, (
+                f"the {private} of a pin is being put in a URL to a third party"
+            )
+
+    def test_the_link_hides_where_it_came_from(self) -> None:
+        # A self-hosted instance's hostname is the one thing on the page that
+        # nobody else needs to learn.
+        body = body_of(source("maps.ts"), "export function externalLink(")
+        assert "noreferrer" in body
+
+    def test_it_opens_away_from_the_map(self) -> None:
+        body = body_of(source("maps.ts"), "export function externalLink(")
+        assert "_blank" in body
+
+    def test_all_three_services_are_built(self) -> None:
+        text = source("maps.ts")
+        for host in ("openstreetmap.org", "google.com/maps", "maps.apple.com"):
+            assert host in text
+
+    def test_google_uses_the_documented_form(self) -> None:
+        # api=1 is Google's promise that the parameters keep working.
+        assert "api=1" in source("maps.ts")
+
+    def test_it_is_an_anchor_rather_than_a_button(self) -> None:
+        # So that middle-click and ctrl-click do what they do everywhere else.
+        body = body_of(source("maps.ts"), "export function externalLink(")
+        assert "createElement('a')" in body
+
+    def test_the_link_is_offered_without_a_token(self) -> None:
+        # Opening a pair of coordinates in OpenStreetMap needs no token, so it
+        # has to be built before the gate that hides Edit and Delete.
+        body = body_of(source("places.ts"), "  private popupFor(")
+        assert body.index("externalLink(") < body.index("if (!getToken()) return root")
+
+    def test_changing_it_repaints_the_pins(self) -> None:
+        # A popup's contents are built when its marker is created, so without
+        # this the setting stored correctly and every pin went on offering the
+        # previous service until the next reload.
+        text = source("main.ts")
+        start = text.index("wirePart('maps-provider'")
+        assert "places.load()" in text[start : start + 600]
+
+    def test_the_picker_needs_no_token(self) -> None:
+        assert "maps-provider" not in gated_ids((WEB / "index.html").read_text())
+
+
 class TestReadOnlyWithoutAToken:
     """Reading the map needs no token; changing anything does.
 

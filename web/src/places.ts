@@ -12,6 +12,7 @@ import type { Map as MapLibreMap } from 'maplibre-gl'
 
 import { ApiError, apiGet, apiSend, getToken } from './api'
 import { icon } from './icons'
+import { externalLink } from './maps'
 import { element } from './ui'
 
 /** Ground a dropped pin clears, in metres. */
@@ -669,6 +670,14 @@ export class Places {
       root.append(tags)
     }
 
+    // Somebody else's map, before the gate: opening a pair of coordinates in
+    // OpenStreetMap needs no token and works perfectly well for a browser that
+    // is only allowed to look.
+    const elsewhere = document.createElement('div')
+    elsewhere.className = 'popup-actions'
+    elsewhere.append(externalLink(place.lat, place.lon))
+    root.append(elsewhere)
+
     // Nothing offered that cannot be done. Without a token both of these
     // answer 401, and a popup whose only two buttons fail is worse than a
     // popup that is simply telling you about a pin.
@@ -864,11 +873,15 @@ export class Places {
     const name = document.createElement('span')
     name.className = 'tree-name'
     name.textContent = folder.name
-    name.title = 'Double click to rename'
-    name.addEventListener('dblclick', () => {
-      const renamed = window.prompt('Folder name', folder.name)?.trim()
-      if (renamed && renamed !== folder.name) void this.setFolder(folder, { name: renamed })
-    })
+    if (getToken()) {
+      name.title = 'Double click to rename'
+      name.addEventListener('dblclick', () => {
+        const renamed = window.prompt('Folder name', folder.name)?.trim()
+        if (renamed && renamed !== folder.name) {
+          void this.setFolder(folder, { name: renamed })
+        }
+      })
+    }
 
     const count = document.createElement('span')
     count.className = 'tree-count'
@@ -905,7 +918,11 @@ export class Places {
     remove.setAttribute('aria-label', remove.title)
     remove.addEventListener('click', () => void this.removeFolder(folder))
 
-    row.append(twist, name, count, nest, eye, remove)
+    // Twist and count always; the three that write only when they can. A
+    // read-only viewer can still expand a folder and see how much is in it,
+    // which is the whole of what the tree is for without a token.
+    row.append(twist, name, count)
+    if (getToken()) row.append(nest, eye, remove)
     return row
   }
 

@@ -212,11 +212,11 @@
 
       <p id="place-message" class="status-line" hidden></p>
 
-      <!-- The rows are built by JavaScript and carry rename, nest, hide and
-           delete buttons, so the mark goes on the container: `inert` covers
-           whatever is rendered into it later. Pins stay readable - the tree is
-           dimmed, not hidden. -->
-      <div id="place-tree" class="place-tree" data-needs-token></div>
+      <!-- Not gated as a whole. Clicking a pin's name flies the map to it and
+           collapsing a folder is a local nicety - both fine without a token.
+           The controls that write are simply not built without one; see
+           folderRow in places.ts. -->
+      <div id="place-tree" class="place-tree"></div>
       <p id="place-empty" class="hint">No pins yet. Drop one on the map.</p>
     </aside>
 
@@ -612,6 +612,24 @@
         </div>
 
         <div class="tab-panel" data-tab="places" hidden>
+          <!-- Not gated: which other map a pin opens in is a browser
+               preference and reaches no server. -->
+          <section>
+            <h2>Open in Maps</h2>
+            <div id="maps-provider" class="segmented" role="group" aria-label="Map service">
+              <button type="button" data-value="osm" aria-pressed="true">OpenStreetMap</button>
+              <button type="button" data-value="google" aria-pressed="false">Google</button>
+              <button type="button" data-value="apple" aria-pressed="false">Apple</button>
+            </div>
+            <p class="hint">
+              A clicked pin offers a link to the same spot in one of these, for
+              the things Irfaran does not know — routing, opening hours, what a
+              place is called this year. <strong>Only the coordinates are
+              sent</strong>: not the pin's name, not its label, not who was
+              there. Per browser, because the right answer on a phone is not
+              the right answer on a desktop.
+            </p>
+          </section>
           <section data-needs-token>
             <h2>Labels</h2>
             <p class="hint">

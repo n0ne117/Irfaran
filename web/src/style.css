@@ -2363,3 +2363,23 @@ body[data-token='missing'] #draw-bar,
 body[data-token='missing'] #review-badge {
   display: none;
 }
+
+/* A pin's link out to somebody else's map. Styled as one of the popup's
+   actions, but an anchor rather than a button so that middle-click and
+   ctrl-click do what they do everywhere else. */
+.popup-open-in {
+  display: block;
+  flex: 1 1 auto;
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 0.3rem;
+  color: var(--fg);
+  font-size: 0.78rem;
+  text-align: center;
+  text-decoration: none;
+}
+
+.popup-open-in:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}

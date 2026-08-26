@@ -41,6 +41,7 @@ import {
   type MapSetup,
 } from './map'
 import { Labels } from './labels'
+import { getMapsProvider, setMapsProvider, type MapsProvider } from './maps'
 import { Gazetteer } from './gazetteer'
 import { getPinsVisible, Places, setPinsVisible } from './places'
 import { PinImport, describeStaged, type StageReport } from './pinimport'
@@ -998,6 +999,20 @@ async function start(): Promise<void> {
   // Labels are a setting, but the pins wear them, so changing one has to
   // reach the map.
   const labels = new Labels(() => void places.load())
+  // Which other map a pin opens in.
+  //
+  // The pins are repainted, and they have to be: a popup's contents are built
+  // when its marker is created, so the link is already in the DOM by the time
+  // anybody changes this. Without the repaint the setting stored correctly and
+  // every pin went on offering the previous service until the next reload,
+  // which is indistinguishable from the setting not working.
+  wirePart('maps-provider', () => {
+    radioGroup<MapsProvider>('maps-provider', getMapsProvider(), (value) => {
+      setMapsProvider(value)
+      void places.load()
+    })
+  })
+
   wirePart('labels', () => labels.wire())
   void labels.load()
 
