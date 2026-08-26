@@ -429,6 +429,31 @@ one of them requires this to stop being a private record on somebody's own
 hardware. The same goes for notifications: a map that nags is a different
 product.
 
+## Not doing: unlocking "what is searched" without a token
+
+Asked for and then withdrawn once the reason was clear, so it is recorded
+rather than reconsidered. Searching is read-only and needs no token, which
+makes it look as though choosing what to search should need none either - but
+the choice is stored in the `settings` table and read by the search endpoint,
+so a browser that cannot write to the server cannot change it.
+
+Unlocking the switches without moving the setting would give controls that
+answer 401, which is the thing 0.18.14 existed to remove. Moving it to the
+browser would work - the client would send `?kinds=pins,coordinates` with each
+query, and it is arguably where a UI preference for a read-only feature
+belongs - at the cost of an API change and of those settings no longer
+travelling in a backup. Decided against: not worth the churn.
+
+## Not doing: separating the two opacity sliders from their sections
+
+Fog thickness and trail strength are applied on the GPU and reach no server,
+but they sit in the Fog and Tracks sections, which are gated without a token
+because the fog *colour* and the trail *ramp* are baked into tiles. So a
+read-only browser cannot dim the fog.
+
+Separating them means splitting both sections in two, and the answer was that
+being gated is fine. Left as it is.
+
 ## Not doing: an external geocoder
 
 Nominatim, or any hosted geocoding API, for answering "where is Vienna".
