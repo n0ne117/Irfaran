@@ -205,14 +205,18 @@
         </button>
       </header>
 
-      <div class="sidebar-actions">
+      <div class="sidebar-actions" data-needs-token>
         <button id="place-drop" type="button" class="primary wide">Drop a pin</button>
         <button id="folder-add" type="button" class="wide">New folder</button>
       </div>
 
       <p id="place-message" class="status-line" hidden></p>
 
-      <div id="place-tree" class="place-tree"></div>
+      <!-- The rows are built by JavaScript and carry rename, nest, hide and
+           delete buttons, so the mark goes on the container: `inert` covers
+           whatever is rendered into it later. Pins stay readable - the tree is
+           dimmed, not hidden. -->
+      <div id="place-tree" class="place-tree" data-needs-token></div>
       <p id="place-empty" class="hint">No pins yet. Drop one on the map.</p>
     </aside>
 
@@ -385,6 +389,16 @@
         </button>
       </header>
 
+      <!-- Read-only, and saying so once rather than by twelve greyed-out
+           buttons that look broken. -->
+      <p id="token-missing" class="token-banner" hidden>
+        <strong>No API token is set.</strong>
+        This browser can look at the map and nothing else — drawing, pins,
+        imports and every setting that reaches the server are switched off
+        until one is entered.
+        <button id="token-missing-fix" type="button" class="linky">Set it now</button>
+      </p>
+
       <nav id="tabs" class="tabs" role="tablist">
         <button type="button" role="tab" data-tab="appearance" aria-selected="true">Appearance</button>
         <button type="button" role="tab" data-tab="draw" aria-selected="false">Draw</button>
@@ -425,7 +439,7 @@
             </p>
           </section>
 
-          <section>
+          <section data-needs-token>
             <h2>Fog</h2>
             <label class="field">
               <span>Thickness — <output id="fog-opacity-value">60%</output></span>
@@ -525,7 +539,7 @@
             </label>
             <label class="field">
               <span>Colours</span>
-              <div id="trail-ramp" class="segmented" role="group" aria-label="Trail colours">
+              <div id="trail-ramp" class="segmented" role="group" aria-label="Trail colours" data-needs-token>
                 <button type="button" data-value="ember" aria-pressed="true">Ember</button>
                 <button type="button" data-value="ice" aria-pressed="false">Ice</button>
                 <button type="button" data-value="moss" aria-pressed="false">Moss</button>
@@ -598,7 +612,7 @@
         </div>
 
         <div class="tab-panel" data-tab="places" hidden>
-          <section>
+          <section data-needs-token>
             <h2>Labels</h2>
             <p class="hint">
               What a pin looks like on the map. A pin with no label is drawn in
@@ -626,7 +640,7 @@
             <p id="label-message" class="status-line" hidden></p>
           </section>
 
-          <section>
+          <section data-needs-token>
             <h2>Who?</h2>
             <p class="hint">
               Names to choose from when a pin asks who you were with. Registered
@@ -652,7 +666,7 @@
         </div>
 
         <div class="tab-panel" data-tab="search" hidden>
-          <section>
+          <section data-needs-token>
             <h2>What is searched</h2>
             <p class="hint">
               What the magnifying glass beside the settings button looks through.
@@ -689,7 +703,7 @@
             <p id="search-settings-status" class="notice" hidden></p>
           </section>
 
-          <section>
+          <section data-needs-token>
             <h2>Place names</h2>
             <p class="hint">Towns, villages and districts, read out of the basemap at zoom 10. About half a million tiles and a couple of minutes, and roughly a million names.</p>
 
@@ -713,7 +727,7 @@
             </div>
           </section>
 
-          <section>
+          <section data-needs-token>
             <h2>Points of interest</h2>
             <p class="hint">Restaurants, hotels, shops and the like. These are only in the deepest tiles, so reading them means going through the whole archive — <strong>hours, not minutes</strong>, and several gigabytes of index. It runs in the background and gives way to any drawing or importing, so nothing else gets slower while it works.</p>
 
@@ -739,7 +753,7 @@
         </div>
 
         <div class="tab-panel" data-tab="backup" hidden>
-          <section>
+          <section data-needs-token>
             <h2>Export</h2>
             <p class="hint">
               Everything worth keeping, as one file: the event log, your pins,
@@ -754,7 +768,7 @@
             </button>
           </section>
 
-          <section>
+          <section data-needs-token>
             <h2>Import</h2>
             <p class="hint">
               Merges a backup into this instance. Nothing is deleted and nothing
@@ -775,7 +789,7 @@
         </div>
 
         <div class="tab-panel" data-tab="import" hidden>
-          <section class="span-all">
+          <section class="span-all" data-needs-token>
             <h2>Import workout files</h2>
             <p class="hint">
               GPX and TCX. Files are imported one at a time, and re-importing
@@ -793,7 +807,7 @@
         </div>
 
         <div class="tab-panel" data-tab="sources" hidden>
-          <section class="span-2">
+          <section class="span-2" data-needs-token>
             <h2>Workout trackers</h2>
             <p class="hint">
               Services that already hold your activities. Nothing is pushed
@@ -857,7 +871,7 @@
             </div>
           </section>
 
-          <section class="span-2">
+          <section class="span-2" data-needs-token>
             <h2>Live tracking</h2>
             <div id="source-list" class="source-list"></div>
             <p class="hint">
@@ -889,19 +903,19 @@
             </p>
 
             <label class="check">
-              <input id="review-workout" type="checkbox" checked />
+              <input id="review-workout" type="checkbox" checked data-needs-token />
               <span>Workout trackers — one review per activity</span>
             </label>
             <label class="check">
-              <input id="review-overland" type="checkbox" checked />
+              <input id="review-overland" type="checkbox" checked data-needs-token />
               <span>Overland</span>
             </label>
             <label class="check">
-              <input id="review-owntracks" type="checkbox" checked />
+              <input id="review-owntracks" type="checkbox" checked data-needs-token />
               <span>OwnTracks</span>
             </label>
             <label class="check">
-              <input id="review-ha" type="checkbox" checked />
+              <input id="review-ha" type="checkbox" checked data-needs-token />
               <span>Home Assistant</span>
             </label>
             <p class="hint">
@@ -953,7 +967,7 @@
         </div>
 
         <div class="tab-panel" data-tab="progress" hidden>
-          <section class="span-2">
+          <section class="span-2" data-needs-token>
             <h2>Drawing the map</h2>
             <p class="hint">
               Rendering happens on the server. Starting it here and then closing
@@ -1008,14 +1022,14 @@
             <p id="history-kept" class="hint"></p>
             <div class="button-row">
               <button id="history-refresh" type="button">Refresh</button>
-              <button id="history-clear" type="button">Clear history</button>
+              <button id="history-clear" type="button" data-needs-token>Clear history</button>
             </div>
             <p id="history-message" class="status-line" hidden></p>
           </section>
         </div>
 
         <div class="tab-panel" data-tab="basemap" hidden>
-          <section class="span-all">
+          <section class="span-all" data-needs-token>
             <h2>Basemap</h2>
             <p id="basemap-status" class="status-line">Checking.</p>
             <div id="basemap-progress-row" class="progress-row" hidden>

@@ -43,6 +43,45 @@ def source(name: str) -> str:
     return path.read_text()
 
 
+def gated_ids(markup: str) -> set[str]:
+    """Every element id that sits inside - or is - a `data-needs-token` region.
+
+    Asked of the real tag nesting rather than of the characters nearby. The
+    first version of this test looked two thousand characters back for the
+    mark, which the Workout trackers section defeated by opening with more
+    prose than that before its first button.
+    """
+    from html.parser import HTMLParser
+
+    class Walk(HTMLParser):
+        def __init__(self) -> None:
+            super().__init__(convert_charrefs=True)
+            self.depth: list[bool] = []
+            self.found: set[str] = set()
+
+        def _record(self, attrs: list[tuple[str, str | None]]) -> bool:
+            names = {name for name, _ in attrs}
+            inside = any(self.depth) or "data-needs-token" in names
+            identifier = dict(attrs).get("id")
+            if identifier and inside:
+                self.found.add(identifier)
+            return inside
+
+        def handle_starttag(self, tag, attrs):
+            self.depth.append(self._record(attrs))
+
+        def handle_startendtag(self, tag, attrs):
+            self._record(attrs)
+
+        def handle_endtag(self, tag):
+            if self.depth:
+                self.depth.pop()
+
+    walk = Walk()
+    walk.feed(markup)
+    return walk.found
+
+
 def body_of(text: str, signature: str) -> str:
     """The text of one method, from its signature to the matching brace."""
     start = text.index(signature)
@@ -200,6 +239,105 @@ class TestTheDropCursor:
                 f"the {handler} handler writes the cursor without checking "
                 "whether a pin is being placed"
             )
+
+
+class TestReadOnlyWithoutAToken:
+    """Reading the map needs no token; changing anything does.
+
+    Before this, a browser with no token got the whole interface and a 401 for
+    each thing it tried, which reads as the application being broken rather
+    than as read-only.
+    """
+
+    def markup(self) -> str:
+        return (WEB / "index.html").read_text()
+
+    def test_the_banner_exists_and_is_crimson(self) -> None:
+        assert 'id="token-missing"' in self.markup()
+        css = (WEB / "src" / "style.css").read_text()
+        block = css[css.index(".token-banner {") :][:400]
+        assert "var(--bad)" in block, "the banner is not the colour of a problem"
+
+    def test_it_is_above_the_tabs_so_every_tab_shows_it(self) -> None:
+        markup = self.markup()
+        assert markup.index('id="token-missing"') < markup.index('id="tabs"')
+
+    def test_the_gate_uses_inert_rather_than_walking_the_tree(self) -> None:
+        # inert takes a subtree out of pointer and keyboard reach in one
+        # attribute, and keeps covering controls rendered later - the
+        # live-tracking switches are built after the page loads.
+        body = body_of(source("main.ts"), "function applyTokenGate(")
+        assert ".inert = " in body
+        assert "[data-needs-token]" in body
+
+    def test_the_two_map_buttons_go_away(self) -> None:
+        css = (WEB / "src" / "style.css").read_text()
+        assert "body[data-token='missing'] #draw-toggle" in css
+        assert "#review-badge" in css[css.index("body[data-token='missing']") :][:400]
+
+    def test_the_security_tab_is_never_gated(self) -> None:
+        # It is where the token is entered. Gating it behind having one is a
+        # locked door with the key inside.
+        gated = gated_ids(self.markup())
+        assert "settings-token" not in gated and "token-apply" not in gated
+
+    def test_it_re_runs_when_a_token_arrives(self) -> None:
+        # A token can arrive at any moment - the setup screen, the Security
+        # tab, a password manager filling a field. Reading it once at startup
+        # would be wrong for the rest of the session.
+        assert "onTokenChange(() => applyTokenGate())" in source("main.ts")
+
+    def test_setting_a_token_tells_the_watchers(self) -> None:
+        body = body_of(source("api.ts"), "export function setToken(")
+        assert "watchers" in body
+
+    def test_one_failing_watcher_does_not_stop_the_others(self) -> None:
+        body = body_of(source("api.ts"), "export function setToken(")
+        assert "catch" in body
+
+    def test_things_that_write_are_marked(self) -> None:
+        # A sample across the tabs, each of which reaches the server. Asked of
+        # the real tag nesting rather than of the characters nearby: the
+        # Workout trackers section opens two thousand characters of prose
+        # before its first button, which a text window quietly failed.
+        gated = gated_ids(self.markup())
+        for writes in (
+            "fog-colour-apply",
+            "label-add",
+            "search-pins",
+            "gaz-place-build",
+            "export-start",
+            "import-button",
+            "intervals-save",
+            "progress-start",
+            "history-clear",
+            "review-overland",
+            "place-drop",
+        ):
+            assert writes in gated, (
+                f"{writes} writes to the server and is not behind the gate"
+            )
+
+    def test_browser_only_settings_are_left_alone(self) -> None:
+        # Fog thickness, borders, the scale bar, trail popups - none of these
+        # touch the server, and gating them would leave a read-only viewer
+        # unable to adjust their own view.
+        gated = gated_ids(self.markup())
+        for local in (
+            "show-borders",
+            "show-scale",
+            "trail-popups",
+            "trail-cap-notice",
+            "settings-token",
+            "token-apply",
+            "history-refresh",
+            "diagnostics-copy",
+        ):
+            assert local not in gated, f"{local} needs no token and is gated anyway"
+
+    def test_a_pin_popup_offers_nothing_it_cannot_do(self) -> None:
+        body = body_of(source("places.ts"), "  private popupFor(")
+        assert "if (!getToken()) return root" in body
 
 
 class TestNoticesStackRatherThanOverlap:

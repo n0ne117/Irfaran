@@ -10,7 +10,7 @@ import {
   watchLifecycle,
   wireDiagnostics,
 } from './diagnostics'
-import { ApiError, apiGet, apiSend, getToken } from './api'
+import { ApiError, apiGet, apiSend, getToken, onTokenChange } from './api'
 import { Brush } from './brush'
 import { Draw, MIN_DRAW_ZOOM, type Tool } from './draw'
 import { Backup } from './backup'
@@ -537,6 +537,34 @@ async function followTheQueue(status: Notice, summary: string): Promise<void> {
   )
 }
 
+/**
+ * Switch off everything that cannot work without an API token.
+ *
+ * Reading the map needs no token; changing anything does, and the middleware
+ * refuses every write without one. Before this, a browser with no token got
+ * the whole interface and a 401 for each thing it tried - which reads as the
+ * application being broken rather than as read-only.
+ *
+ * `inert` rather than walking the tree setting `disabled`: it takes a whole
+ * subtree out of pointer *and* keyboard reach in one attribute, and it keeps
+ * covering controls that are rendered later - the live-tracking switches are
+ * built by JavaScript after the page loads, and would have been missed by
+ * anything that ran once over the markup.
+ *
+ * Deliberately not applied to the Security tab. That is where the token is
+ * entered, and gating it behind having a token is a locked door with the key
+ * inside.
+ */
+function applyTokenGate(): void {
+  const has = Boolean(getToken())
+  document.body.dataset.token = has ? 'set' : 'missing'
+  element('token-missing').hidden = has
+
+  for (const host of document.querySelectorAll<HTMLElement>('[data-needs-token]')) {
+    host.inert = !has
+  }
+}
+
 function wirePart(name: string, wire: () => void): void {
   try {
     wire()
@@ -635,8 +663,21 @@ async function start(): Promise<void> {
   const watchers: ((tab: string) => void)[] = [
     (tab) => progress.watch(tab === 'progress'),
   ]
-  wireTabs('tabs', (tab) => {
+  const showTab = wireTabs('tabs', (tab) => {
     for (const watcher of watchers) watcher(tab)
+  })
+
+  // Read-only until a token arrives, and it can arrive at any moment - from
+  // the setup screen, from the Security tab, or from a password manager
+  // filling the field. So this re-runs on every change rather than once.
+  wirePart('token-gate', () => {
+    applyTokenGate()
+    onTokenChange(() => applyTokenGate())
+    element('token-missing-fix').addEventListener('click', () => {
+      sheets.open('panel')
+      showTab('security')
+      element<HTMLInputElement>('settings-token').focus()
+    })
   })
   wireZoom(map as never)
   watchLifecycle(map)

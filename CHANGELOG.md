@@ -11,6 +11,26 @@ Entries are written for someone reading the release page, not for someone readin
 
 Nothing yet.
 
+## [0.18.14] - 2026-08-26
+
+### Added
+- **A browser with no API token is now visibly read-only, instead of quietly broken.** Reading the map has never needed a token and changing anything always has — but the interface offered everything regardless, and answered each attempt with a 401. That reads as the application being broken rather than as a viewer without the keys.
+
+  With no token: the **drawing button and the review badge are gone** from the map, everything that reaches the server is switched off, and a **crimson banner sits above the settings tabs** saying so once, with a link that jumps straight to the Security tab and focuses the field. Twenty-one regions are gated in total.
+
+- **The gate lifts the moment a token arrives**, without a reload. A token can turn up from the setup screen, the Security tab, or a password manager filling a field, so `setToken` now tells anyone who cares rather than being read once at startup and wrong for the rest of the session.
+
+### Note
+Three things about this that were not obvious going in.
+
+**Most of Appearance needs no token.** The fog thickness, the borders, the scale bar, the trail style and the track-count line are all stored in the browser and never reach the server — gating them would have left a read-only viewer unable to adjust their own view. Only the fog *colour* and the trail *ramp* are server-side, because they are baked into the tiles. So the marks are per-section where a section is all-or-nothing and per-control where it is mixed.
+
+**The Security tab is deliberately never gated.** It is where the token is entered, and gating it behind having a token is a locked door with the key inside.
+
+**`inert` rather than walking the tree setting `disabled`.** It takes a whole subtree out of pointer *and* keyboard reach in one attribute, and it keeps covering controls that are rendered later — the live-tracking switches and the pin tree are built by JavaScript after the page loads, and anything that ran once over the markup would have missed them. A pin's popup also stops offering Edit and Delete, since both would only answer 401.
+
+The test that checks this asks the real tag nesting rather than the characters nearby. The first version looked two thousand characters back for the mark and passed for ten controls out of eleven — the Workout trackers section opens with more prose than that before its first button.
+
 ## [0.18.13] - 2026-08-26
 
 ### Fixed

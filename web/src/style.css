@@ -2326,3 +2326,40 @@ kbd {
   transform: none;
   pointer-events: auto;
 }
+
+/* ------------------------------------------------------------ no token yet */
+
+/* Said once, in one place, rather than by a dozen greyed-out buttons that
+   look broken. Crimson because this is the one banner that is about a thing
+   not working. */
+.token-banner {
+  margin: 0 0 0.6rem;
+  padding: 0.55rem 0.8rem;
+  border: 1px solid var(--bad);
+  border-radius: 0.375rem;
+  background: color-mix(in srgb, var(--bad) 12%, transparent);
+  color: var(--bad);
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
+.token-banner .linky {
+  color: var(--bad);
+  font-weight: 600;
+}
+
+/* What cannot work without a token. `inert` is what actually takes these out
+   of reach - pointer and keyboard both - and this is only how it looks. */
+[data-needs-token][inert] {
+  opacity: 0.4;
+  /* Belt and braces for a browser old enough not to know `inert`. */
+  pointer-events: none;
+}
+
+/* No token, no drawing and nothing waiting to be reviewed. Hidden rather than
+   disabled: a button that cannot ever do anything is furniture. */
+body[data-token='missing'] #draw-toggle,
+body[data-token='missing'] #draw-bar,
+body[data-token='missing'] #review-badge {
+  display: none;
+}

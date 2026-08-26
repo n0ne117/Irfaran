@@ -10,7 +10,7 @@
 import { Marker, Popup } from 'maplibre-gl'
 import type { Map as MapLibreMap } from 'maplibre-gl'
 
-import { ApiError, apiGet, apiSend } from './api'
+import { ApiError, apiGet, apiSend, getToken } from './api'
 import { icon } from './icons'
 import { element } from './ui'
 
@@ -668,6 +668,11 @@ export class Places {
       }
       root.append(tags)
     }
+
+    // Nothing offered that cannot be done. Without a token both of these
+    // answer 401, and a popup whose only two buttons fail is worse than a
+    // popup that is simply telling you about a pin.
+    if (!getToken()) return root
 
     const actions = document.createElement('div')
     actions.className = 'popup-actions'

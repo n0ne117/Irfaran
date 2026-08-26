@@ -58,6 +58,20 @@ export function describeToken(token: string): string {
   return parts.join(', ')
 }
 
+/**
+ * Told whenever the token is set or cleared.
+ *
+ * Half the interface is unusable without one, and it can arrive at any moment
+ * - the setup screen, the Security tab, a password manager filling a field.
+ * Anything that gates itself on having a token subscribes here rather than
+ * reading it once at startup and being wrong for the rest of the session.
+ */
+const watchers = new Set<() => void>()
+
+export function onTokenChange(watcher: () => void): void {
+  watchers.add(watcher)
+}
+
 export function setToken(token: string): void {
   try {
     if (token) {
@@ -67,6 +81,14 @@ export function setToken(token: string): void {
     }
   } catch {
     // Storage disabled. The token still works for this page load.
+  }
+  for (const watcher of watchers) {
+    try {
+      watcher()
+    } catch (error) {
+      // One panel failing to re-gate must not stop the others.
+      console.error('Irfaran: a token watcher threw', error)
+    }
   }
 }
 
