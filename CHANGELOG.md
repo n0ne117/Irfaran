@@ -11,6 +11,23 @@ Entries are written for someone reading the release page, not for someone readin
 
 Nothing yet.
 
+## [0.19.0] - 2026-08-26
+
+### Fixed
+- **A hand-drawn stroke belongs to the year on screen.** Asked as a question — *"if a year is chosen on the time bar and something is hand-drawn into it, is this action saved in the selected year, or somewhere else?"* — and the answer was somewhere else.
+
+  The year came from a text field under Settings → Draw, which was blank by default. Blank meant `expand_layers(None)`, which means prehistory. So selecting 2019 and drawing a line filed it under prehistory, the 2019 view was never re-rendered, and the vector trail layer filtered it out for good measure: **the preview cleared and the line was simply gone.** You drew something and nothing happened, and that was the expected behaviour.
+
+  Selecting a year and drawing now files the stroke in that year. On *All time* or *Before records* it goes to prehistory, where undated things live — and the cumulative view shows it either way, so nothing disappears there either.
+
+### Removed
+- **The "Years for new strokes" field**, which is what the time bar now answers.
+
+### Note
+The `Timeline` object was already being passed into the drawing code, and already exposed the getter that answers this. It was used to refresh the year list after a stroke and for nothing else — the information was in scope and unread.
+
+One capability goes with the field: a stroke can only be filed under a year the time bar offers, and the time bar only offers years that already have data. Reconstructing 1995 by hand on an archive with nothing in 1995 is no longer possible from the interface. Worth knowing; easy to give back with a small "another year" control if it turns out to be missed.
+
 ## [0.18.16] - 2026-08-26
 
 ### Fixed

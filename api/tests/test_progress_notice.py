@@ -341,6 +341,48 @@ class TestOpenInSomebodyElsesMap:
         assert "maps-provider" not in gated_ids((WEB / "index.html").read_text())
 
 
+class TestAStrokeBelongsToTheYearOnScreen:
+    """Reported as: is a stroke saved in the selected year, or somewhere else?
+
+    Somewhere else. The year came from a text field in the settings which was
+    blank by default, so `expand_layers(None)` filed the stroke in prehistory -
+    the 2019 view was never re-rendered, the vector layer filtered it out, and
+    the line simply vanished when the preview cleared. You drew something and
+    nothing happened.
+
+    The Timeline object was already being handed to the drawing code, and
+    already exposed the getter that answers this. It was used to refresh the
+    year list and nothing else.
+    """
+
+    def test_the_year_comes_from_the_time_bar(self) -> None:
+        text = source("main.ts")
+        assert "followTheYear(timeline.view)" in text
+        assert "draw.layers = strokeLayerFor(view)" in text
+
+    def test_changing_the_year_changes_where_a_stroke_lands(self) -> None:
+        # Not read once at startup: selecting 2019 an hour in has to work too.
+        text = source("main.ts")
+        start = text.index("const timeline = new Timeline(")
+        assert "followTheYear(view)" in text[start : start + 400]
+
+    def test_a_year_view_maps_to_that_year(self) -> None:
+        body = body_of(source("timeline.ts"), "export function strokeLayerFor(")
+        assert "view.slice('year:'.length)" in body
+
+    def test_anything_that_is_not_a_year_is_undated(self) -> None:
+        # `all` is not a year, and a stroke drawn there has no date somebody
+        # supplied. Prehistory is where undated things go - and the cumulative
+        # view shows it either way, so nothing disappears.
+        body = body_of(source("timeline.ts"), "export function strokeLayerFor(")
+        assert "return PREHISTORY" in body
+
+    def test_the_settings_field_is_gone(self) -> None:
+        markup = (WEB / "index.html").read_text()
+        assert 'id="draw-layers"' not in markup
+        assert "draw-layers" not in source("main.ts")
+
+
 class TestReadOnlyWithoutAToken:
     """Reading the map needs no token; changing anything does.
 
@@ -385,7 +427,7 @@ class TestReadOnlyWithoutAToken:
         # Neither can do anything without a token: drawing is refused, and the
         # trail ramp is baked into tiles the server renders.
         gated = gated_ids(self.markup())
-        for locked in ("draw-radius", "draw-layers", "trail-ramp",
+        for locked in ("draw-radius", "trail-ramp",
                        "trail-style", "trail-popups", "heat-opacity"):
             assert locked in gated, f"{locked} is not behind the gate"
 

@@ -47,6 +47,24 @@ export function stopsFor(views: string[]): Stop[] {
   return stops
 }
 
+/**
+ * The time layer a new stroke belongs in, for whatever the time bar is showing.
+ *
+ * Drawing used to ignore the time bar entirely and take its year from a text
+ * field in the settings, which was blank by default - so selecting 2019,
+ * drawing a line, and watching it vanish was the expected behaviour rather
+ * than a fault. The stroke went to prehistory, the 2019 view was never
+ * re-rendered, and the vector layer filtered it out for good measure.
+ *
+ * `all` is not a year, so a stroke drawn there is undated and goes where
+ * undated things go. That is also the one view where it makes no visible
+ * difference, since the cumulative map shows every layer at once.
+ */
+export function strokeLayerFor(view: string): string {
+  if (view.startsWith('year:')) return view.slice('year:'.length)
+  return PREHISTORY
+}
+
 export class Timeline {
   private stops: Stop[] = [{ view: 'all', label: 'All time', tick: '∑' }]
   private index = 0

@@ -55,7 +55,7 @@ import { People } from './people'
 import { Progress } from './progress'
 import { Sources } from './sources'
 import { Trackers } from './trackers'
-import { Timeline } from './timeline'
+import { strokeLayerFor, Timeline } from './timeline'
 import {
   getTrailCapNotice,
   getTrailPopups,
@@ -320,9 +320,6 @@ function wireDrawing(
     draw.setTool(value)
     brush.setTool(value)
     refreshLock()
-  })
-  element<HTMLInputElement>('draw-layers').addEventListener('input', (event) => {
-    draw.layers = (event.target as HTMLInputElement).value
   })
   // Brush width has two controls - a slider on the toolbar and a number field
   // in settings - because both are the right one at different moments. They
@@ -811,11 +808,16 @@ async function start(): Promise<void> {
     trails.restyle()
   })
 
+  // Set once the drawing tools exist, a few lines below: a stroke belongs to
+  // whatever the time bar is showing, and the time bar is built first.
+  let followTheYear: (view: string) => void = () => {}
+
   const timeline = new Timeline((view) => {
     options.view = view
     applyView(map, options)
     trails.view = view
     void trails.refresh()
+    followTheYear(view)
   })
   void timeline.load()
 
@@ -842,6 +844,15 @@ async function start(): Promise<void> {
     },
   )
   const draw = drawing.draw
+
+  // A stroke is filed under the year on screen. Before this it came from a
+  // text field in the settings that was blank by default, so drawing into a
+  // selected year filed the stroke in prehistory - where the view being
+  // looked at could not show it. You drew a line and nothing appeared.
+  followTheYear = (view) => {
+    draw.layers = strokeLayerFor(view)
+  }
+  followTheYear(timeline.view)
 
   const places = new Places(map, () => {
     bustTileCache()
