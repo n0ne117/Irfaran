@@ -411,6 +411,7 @@
         <button type="button" role="tab" data-tab="progress" aria-selected="false">In progress</button>
         <button type="button" role="tab" data-tab="history" aria-selected="false">History</button>
         <button type="button" role="tab" data-tab="basemap" aria-selected="false">Basemap</button>
+        <button type="button" role="tab" data-tab="statistics" aria-selected="false">Statistics</button>
         <button type="button" role="tab" data-tab="about" aria-selected="false">About</button>
       </nav>
 
@@ -1063,6 +1064,77 @@
             <p class="hint">
               Pausing keeps what has been downloaded so far. Cancelling throws
               it away.
+            </p>
+          </section>
+        </div>
+
+        <!-- Not gated: these are counts of somebody's own map, and the map is
+             already readable without a token. -->
+        <div class="tab-panel" data-tab="statistics" hidden>
+          <section class="span-2">
+            <h2>Ground covered</h2>
+            <p class="stat-headline" id="stat-area">—</p>
+            <p class="hint">
+              Fog cleared, water included — a ferry crossing is as much a place
+              you have been as a footpath. Measured on the ground rather than on
+              the screen: a pixel near the poles covers a fraction of what one
+              at the equator does, and every one is weighted accordingly.
+            </p>
+            <p class="stat-aside" id="stat-share">—</p>
+            <p class="stat-aside" id="stat-tiles">—</p>
+          </section>
+
+          <section>
+            <h2>Routes</h2>
+            <p class="stat-headline" id="stat-routes">—</p>
+            <table class="progress-table">
+              <tr><th>Workouts</th><td id="stat-routes-workouts">—</td></tr>
+              <tr><th>Drawn by hand</th><td id="stat-routes-drawn">—</td></tr>
+              <tr><th>From live tracking</th><td id="stat-routes-live">—</td></tr>
+              <tr><th>Named journeys</th><td id="stat-journeys">—</td></tr>
+            </table>
+            <p class="hint">
+              Workouts are one line rather than two: a file dropped in and an
+              activity a tracker fetched are stored identically on purpose, so
+              that something already imported by hand is recognised rather than
+              drawn twice — and nothing in the log tells them apart afterwards.
+              A long ride arrives as one route per continuous stretch, which is
+              why <em>named journeys</em> is the smaller number.
+            </p>
+          </section>
+
+          <section>
+            <h2>Points</h2>
+            <p class="stat-headline" id="stat-points">—</p>
+            <p class="hint">
+              Every position the map is built from, as each source reported it.
+              A track imported twice in two formats counts twice.
+            </p>
+          </section>
+
+          <section>
+            <h2>On the map by hand</h2>
+            <table class="progress-table">
+              <tr><th>Pins</th><td id="stat-pins">—</td></tr>
+              <tr><th>Labels</th><td id="stat-labels">—</td></tr>
+              <tr><th>Folders</th><td id="stat-folders">—</td></tr>
+              <tr><th>People</th><td id="stat-people">—</td></tr>
+              <tr><th>Fog cleared without a route</th><td id="stat-revealed">—</td></tr>
+              <tr><th>Re-fogged</th><td id="stat-refogged">—</td></tr>
+            </table>
+          </section>
+
+          <section>
+            <h2>Time covered</h2>
+            <p class="stat-headline" id="stat-years">—</p>
+            <p class="stat-aside" id="stat-years-count">—</p>
+            <p id="stats-state" class="status-line" hidden></p>
+            <div class="button-row">
+              <button id="stats-refresh" type="button">Recalculate</button>
+            </div>
+            <p class="hint">
+              Worked out once and remembered until the archive changes —
+              measuring the ground reads every fog blob there is.
             </p>
           </section>
         </div>

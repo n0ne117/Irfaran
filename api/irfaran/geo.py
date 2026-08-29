@@ -121,6 +121,44 @@ def radius_px(radius_m: float, lat: float, zoom: int = NATIVE_Z) -> float:
     return radius_m / m_per_px(lat, zoom)
 
 
+#: Mean Earth radius, for turning a patch of the projection into ground.
+EARTH_RADIUS_M = 6_371_008.8
+
+#: The whole surface, water included, in square metres.
+EARTH_SURFACE_M2 = 4.0 * math.pi * EARTH_RADIUS_M**2
+
+
+def tile_row_area_m2(tile_y: int, zoom: int = NATIVE_Z) -> float:
+    """Ground covered by one tile in row `tile_y`, in square metres.
+
+    Web Mercator stretches towards the poles, so counting pixels and calling
+    the answer area is wrong - and wrong in a way that flatters the north. At
+    zoom 14 a tile covers 5.97 km2 at the equator, 2.65 km2 at the latitude of
+    Vienna and 0.72 km2 at that of Tromso - a factor of eight.
+
+    Computed exactly rather than approximately: the area between two parallels
+    on a sphere is proportional to the difference of their sines, so a row of
+    tiles is a spherical zone and one tile is that zone divided by the number
+    of columns. No integration and no small-angle assumption.
+    """
+    columns = tile_count(zoom)
+    top = math.radians(_tile_lat(tile_y, zoom))
+    bottom = math.radians(_tile_lat(tile_y + 1, zoom))
+    zone = 2.0 * math.pi * EARTH_RADIUS_M**2 * abs(math.sin(top) - math.sin(bottom))
+    return zone / columns
+
+
+def tile_pixel_area_m2(tile_y: int, zoom: int = NATIVE_Z) -> float:
+    """Ground covered by one pixel of a tile in row `tile_y`."""
+    return tile_row_area_m2(tile_y, zoom) / (TILE_PX * TILE_PX)
+
+
+def _tile_lat(tile_y: float, zoom: int = NATIVE_Z) -> float:
+    """Latitude of the top edge of a tile row."""
+    n = math.pi - 2.0 * math.pi * tile_y / tile_count(zoom)
+    return math.degrees(math.atan(math.sinh(n)))
+
+
 def px_to_tile(x_px: float, y_px: float) -> tuple[int, int]:
     """The tile containing a pixel coordinate, on that pixel's own grid."""
     return int(math.floor(x_px / TILE_PX)), int(math.floor(y_px / TILE_PX))

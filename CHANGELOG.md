@@ -11,6 +11,30 @@ Entries are written for someone reading the release page, not for someone readin
 
 Nothing yet.
 
+## [0.19.1] - 2026-08-26
+
+### Added
+- **A Statistics page**, under Settings. What an archive of 1,549 routes actually adds up to:
+
+  - **Ground covered**, as square kilometres — the headline, because it is the figure a person can picture. The share of the planet sits underneath as the curiosity it is: 251.7 km² is *0.0000493%*, which reads as five leading zeros and nothing else, so it is also said as **one part in two million**. That is the number that makes the point about how big the world is.
+  - **Routes**, total first, then workouts, hand-drawn and live tracking underneath — plus *named journeys*, which is smaller, because a long ride arrives as one route per continuous stretch.
+  - **Points** the map is built from, **pins, labels, folders and people**, how much fog was cleared without claiming a route and how much was put back, and the **years covered**.
+
+  **Water counts.** A ferry crossing is as much a place you have been as a footpath, and the denominator is the whole planet, ocean included.
+
+### Note
+Two things here would have looked perfectly fine on screen and been wrong.
+
+**Mercator is not a map of areas.** At zoom 14 a tile covers 5.97 km² at the equator, 2.65 km² at the latitude of Vienna and 0.72 km² at that of Tromsø — a factor of eight. Counting cleared pixels and calling the answer area would flatter anybody who has been north, badly. Every pixel is weighted by the true ground area of its row, computed from the difference of the sines of the row's two latitudes rather than approximated. As a check, every tile in the grid adds up to 99.63% of a planet: the missing 0.37% is the two polar caps, which Mercator cannot draw.
+
+**The same street in two years is one piece of ground.** Fog is stored per source and per layer, so a commute walked in 2019 and again in 2024 is two blobs over identical pixels. They are unioned per tile before anything is counted — otherwise the figure would grow every year without anybody going anywhere new.
+
+Measuring the ground reads every fog blob in the archive: 0.78 s and 297 MB here. So it is computed once, written down with a fingerprint of what produced it, and handed back untouched until the archive moves — the same lesson as the render status recomputing its job count on every poll, and the gazetteer walking `dbstat` on an endpoint asked once a second. The fingerprint is asserted never to read a blob's contents, or the cache would cost what it saves.
+
+Workouts are one line rather than two on purpose. A file dropped in under Import and an activity a tracker fetched are stored identically — that is what makes an already-imported activity recognised rather than drawn twice — and nothing in the log tells them apart afterwards.
+
+**Countries are not here yet.** They need polygons the archive does not have, and getting the borders right enough that a walk near one does not add a country you have never set foot in is the whole difficulty. That is the next release, not a thing left out.
+
 ## [0.19.0] - 2026-08-26
 
 ### Fixed

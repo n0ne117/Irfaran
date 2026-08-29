@@ -2389,3 +2389,22 @@ body[data-token='missing'] #review-badge {
   border-color: var(--accent);
   color: var(--accent);
 }
+
+/* ------------------------------------------------------------- statistics */
+
+/* One number per section, large enough to be the answer rather than a detail.
+   The supporting figures go in a table underneath, which is where the eye
+   goes second. */
+.stat-headline {
+  margin: 0.2rem 0 0.4rem;
+  color: var(--fg);
+  font-size: 1.7rem;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+
+.stat-aside {
+  margin: 0.15rem 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+}

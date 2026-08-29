@@ -53,6 +53,7 @@ import { hydrateIcons, setIcon } from './icons'
 import { History } from './history'
 import { People } from './people'
 import { Progress } from './progress'
+import { Stats } from './stats'
 import { Sources } from './sources'
 import { Trackers } from './trackers'
 import { strokeLayerFor, Timeline } from './timeline'
@@ -1021,6 +1022,12 @@ async function start(): Promise<void> {
 
   wirePart('labels', () => labels.wire())
   void labels.load()
+
+  // Counts of the archive. Fetched once when the tab is first opened rather
+  // than polled: measuring the cleared ground reads every fog blob there is.
+  const stats = new Stats()
+  wirePart('stats', () => stats.wire())
+  watchers.push((tab) => stats.watch(tab === 'statistics'))
 
   const sources = new Sources()
   void sources.load()

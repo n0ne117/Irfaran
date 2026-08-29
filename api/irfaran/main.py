@@ -38,6 +38,7 @@ from irfaran import (  # noqa: I001
     review,
     search,
     settings_env,
+    stats,
     tokens,
     trackers,
     transfer,
@@ -1356,6 +1357,21 @@ def discard_staged_pin(
             return pinimport.discard(conn, pin_id)
     except pinimport.PinImportError as exc:
         raise _pin_error(exc) from exc
+
+
+@app.get("/api/stats")
+def statistics(
+    refresh: bool = False, conn: sqlite3.Connection = Depends(get_conn)
+) -> dict[str, object]:
+    """What the archive adds up to.
+
+    A read, so no token: these are counts of somebody's own map, and the map
+    itself is already readable. Deliberately not something to poll - measuring
+    the cleared ground reads every fog blob in the archive - so it is cached
+    against a fingerprint and only recomputed when that moves. `refresh=true`
+    forces it, for the button that says so.
+    """
+    return stats.overview(conn, refresh=refresh)
 
 
 # ------------------------------------------------------------------- review

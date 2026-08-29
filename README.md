@@ -52,6 +52,7 @@ Delete both caches, run a rebuild, get byte-identical output. That means the who
 - Review before anything automatic reaches the map: a workout tracker or a phone hands over what it has, it waits in a holding pen, and you see each candidate on the map on its own, trim the ends, leave a leg out, rename it, then accept or discard. On by default, one switch per source under Settings, Review
 - A scale bar in the corner, metric, that shortens as you go north the way it should — switchable off under Appearance
 - Read-only without a token, and it says so: the drawing tools and the review badge disappear, everything that writes is switched off, and a banner on the settings page explains why rather than leaving a dozen buttons that answer 401
+- A statistics page: ground covered in km² (and the share of the planet, which is humbling), routes by where they came from, points, pins, and the years covered
 - Independent light/dark themes for the interface and the map
 
 ## Quick start
