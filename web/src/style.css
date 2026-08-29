@@ -2408,3 +2408,32 @@ body[data-token='missing'] #review-badge {
   color: var(--muted);
   font-size: 0.78rem;
 }
+
+.country-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  margin: 0.4rem 0 0.6rem;
+}
+
+.country-row {
+  display: grid;
+  grid-template-columns: 1fr auto 4.5rem;
+  align-items: baseline;
+  gap: 0.6rem;
+  padding: 0.15rem 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 55%, transparent);
+  font-size: 0.82rem;
+}
+
+.country-area {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* How much of the country, right-aligned so the column reads as a column. */
+.country-share {
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}

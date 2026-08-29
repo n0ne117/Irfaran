@@ -52,7 +52,7 @@ Delete both caches, run a rebuild, get byte-identical output. That means the who
 - Review before anything automatic reaches the map: a workout tracker or a phone hands over what it has, it waits in a holding pen, and you see each candidate on the map on its own, trim the ends, leave a leg out, rename it, then accept or discard. On by default, one switch per source under Settings, Review
 - A scale bar in the corner, metric, that shortens as you go north the way it should — switchable off under Appearance
 - Read-only without a token, and it says so: the drawing tools and the review badge disappear, everything that writes is switched off, and a banner on the settings page explains why rather than leaving a dozen buttons that answer 401
-- A statistics page: ground covered in km² (and the share of the planet, which is humbling), routes by where they came from, points, pins, and the years covered
+- A statistics page: ground covered in km² (and the share of the planet, which is humbling), countries visited with how much of each, routes by where they came from, points, pins, and the years covered
 - Independent light/dark themes for the interface and the map
 
 ## Quick start
@@ -382,6 +382,23 @@ Every image on it is rendered from invented data by the two scripts in
 [`docs/img/`](docs/img/): a seeded random walk on a street grid in the middle of the
 Atlantic. Nothing there shows anyone's real movements, and nothing should ever be
 replaced with a picture that does.
+
+## Country borders
+
+The statistics page counts countries, and the archive has nothing to count them
+with: the basemap carries border lines rather than closed shapes. So Irfaran
+ships one piece of somebody else's data — [Natural
+Earth](https://www.naturalearthdata.com/) 1:10m Admin 0 Countries, public
+domain — as `api/irfaran/data/countries.bin`, 2.26 MB, built by
+`scripts/build_countries.py` from the published GeoJSON.
+
+It is the most detailed free set and is used **unsimplified**, because
+simplification is what cuts corners off borders and hands you a country you
+walked past rather than through. Rebuild it with:
+
+```bash
+scripts/build_countries.py ne_10m_admin_0_countries.geojson
+```
 
 ## Credits
 

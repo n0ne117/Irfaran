@@ -36,6 +36,7 @@ from typing import Iterator
 
 import numpy as np
 
+from irfaran import countries as country_shapes
 from irfaran import geo, raster
 
 #: Where the last computed answer is kept, with what it was computed from.
@@ -118,6 +119,109 @@ def ground(conn: sqlite3.Connection) -> dict[str, object]:
         # but that missing sliver is the two polar caps, and the question was
         # what fraction of the world has been seen.
         "percent_of_planet": square_metres / geo.EARTH_SURFACE_M2 * 100.0,
+    }
+
+
+def visited(
+    conn: sqlite3.Connection, floor_m2: float | None = None
+) -> dict[str, object]:
+    """Cleared ground, split by whose country it is in.
+
+    Per pixel rather than per tile. A zoom 14 tile is over a kilometre across
+    at European latitudes, so handing a whole tile to whichever country its
+    centre falls in would invent a kilometre of the wrong country along every
+    border - which is exactly the failure this has to avoid. Pixels are six
+    metres.
+
+    A pixel that two countries both claim goes to the first in a stable order,
+    so the total never exceeds the ground actually cleared however much the
+    polygons overlap. Overlaps are real: they are the places nobody agrees
+    about.
+    """
+    floor = country_shapes.DEFAULT_FLOOR_M2 if floor_m2 is None else floor_m2
+
+    try:
+        shapes = country_shapes.load()
+    except country_shapes.CountriesUnavailable as exc:
+        return {"available": False, "why": str(exc), "countries": [], "marginal": []}
+
+    cleared: dict[str, float] = {}
+    unclaimed = 0.0
+
+    for tile_x, tile_y, fog in cleared_tiles(conn):
+        if not int(np.count_nonzero(fog)):
+            continue
+        pixel = geo.tile_pixel_area_m2(tile_y)
+        west, south, east, north = country_shapes.tile_bounds(tile_x, tile_y)
+
+        left = fog.copy()
+        for shape in shapes:
+            if not shape.spans(west, south, east, north):
+                continue
+            mask = country_shapes.mask_for(shape, tile_x, tile_y)
+            if mask is None:
+                continue
+            hit = left & mask
+            lit = int(np.count_nonzero(hit))
+            if not lit:
+                continue
+            cleared[shape.code] = cleared.get(shape.code, 0.0) + lit * pixel
+            # Taken out of the running, so nothing is counted twice.
+            left &= ~mask
+            if not int(np.count_nonzero(left)):
+                break
+        unclaimed += int(np.count_nonzero(left)) * pixel
+
+    # Somewhere a pin was dropped is somewhere somebody chose to record, which
+    # is the one thing a generalised border cannot invent. Two pins on Gran
+    # Canaria clear about five thousand square metres between them - well under
+    # the floor a track has to clear - and dropping Spain off the list for that
+    # was wrong in a way no threshold alone can fix.
+    pinned: dict[str, int] = {}
+    for row in conn.execute("SELECT lat, lon FROM places"):
+        found = country_shapes.country_at(float(row["lon"]), float(row["lat"]))
+        if found is not None:
+            pinned[found.code] = pinned.get(found.code, 0) + 1
+
+    by_code = {shape.code: shape for shape in shapes}
+    for code in pinned:
+        cleared.setdefault(code, 0.0)
+
+    rows = []
+    for code, square_metres in cleared.items():
+        shape = by_code[code]
+        rows.append(
+            {
+                "code": code,
+                "name": shape.name,
+                "square_km": square_metres / 1e6,
+                "square_metres": square_metres,
+                "of_country_percent": (
+                    square_metres / shape.area_m2 * 100.0 if shape.area_m2 else 0.0
+                ),
+                "country_square_km": shape.area_m2 / 1e6,
+                "pins": pinned.get(code, 0),
+                # Why it is on the list, so a surprising entry can be argued
+                # with rather than merely doubted.
+                "because": "a pin" if pinned.get(code) else "ground covered",
+            }
+        )
+    rows.sort(key=lambda row: -float(row["square_metres"]))
+
+    def counts(row: dict[str, object]) -> bool:
+        return bool(row["pins"]) or float(row["square_metres"]) >= floor
+
+    return {
+        "available": True,
+        "floor_square_metres": floor,
+        "countries": [row for row in rows if counts(row)],
+        # Shown rather than dropped. A country nobody has been to appearing
+        # here with forty square metres is the border being approximate, and
+        # saying so is better than deciding quietly either way.
+        "marginal": [row for row in rows if not counts(row)],
+        # Ground in no country at all: at sea, or past the edge of the
+        # polygons. A ferry crossing is mostly this.
+        "at_sea_square_km": unclaimed / 1e6,
     }
 
 
@@ -222,6 +326,7 @@ def compute(conn: sqlite3.Connection) -> dict[str, object]:
     """Every figure, from scratch. Seconds, not milliseconds."""
     return {
         "ground": ground(conn),
+        "countries": visited(conn),
         "routes": routes(conn),
         "points": points(conn),
         "marks": marks(conn),

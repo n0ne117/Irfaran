@@ -41,8 +41,28 @@ interface Time {
   undated: boolean
 }
 
+interface Visited {
+  code: string
+  name: string
+  square_km: number
+  square_metres: number
+  of_country_percent: number
+  country_square_km: number
+  pins: number
+  because: string
+}
+
+interface Countries {
+  available: boolean
+  why?: string
+  countries: Visited[]
+  marginal: Visited[]
+  at_sea_square_km: number
+}
+
 interface Overview {
   ground: Ground
+  countries: Countries
   routes: Routes
   points: number
   marks: Marks
@@ -112,8 +132,64 @@ export class Stats {
     }
   }
 
+  /** A share of a country, at whatever precision makes it a number. */
+  private static share(percent: number): string {
+    if (percent >= 1) return `${percent.toFixed(1)}%`
+    if (percent >= 0.01) return `${percent.toFixed(2)}%`
+    return `${percent.toFixed(4)}%`
+  }
+
+  private paintCountries(visited: Countries): void {
+    const host = element('stat-country-list')
+    host.textContent = ''
+
+    if (!visited.available) {
+      element('stat-countries').textContent = '—'
+      element('stat-at-sea').textContent =
+        visited.why ?? 'The country borders are not available.'
+      return
+    }
+
+    element('stat-countries').textContent = String(visited.countries.length)
+
+    for (const row of visited.countries) {
+      const line = document.createElement('div')
+      line.className = 'country-row'
+
+      const name = document.createElement('span')
+      name.textContent = row.name
+
+      const area = document.createElement('span')
+      area.className = 'country-area'
+      area.textContent = formatArea(row.square_km)
+
+      const share = document.createElement('span')
+      share.className = 'country-share'
+      share.textContent = Stats.share(row.of_country_percent)
+      share.title =
+        `${formatArea(row.square_km)} of ${formatArea(row.country_square_km)}` +
+        (row.pins ? ` · ${row.pins} pin${row.pins === 1 ? '' : 's'}` : '')
+
+      line.append(name, area, share)
+      host.append(line)
+    }
+
+    const marginal = element('stat-country-marginal')
+    marginal.hidden = visited.marginal.length === 0
+    marginal.textContent = visited.marginal.length
+      ? 'Too little to call a visit, and shown rather than dropped — this is ' +
+        'where an approximate border would turn up: ' +
+        visited.marginal.map((row) => row.name).join(', ')
+      : ''
+
+    element('stat-at-sea').textContent =
+      `${formatArea(visited.at_sea_square_km)} in no country at all — at sea, ` +
+      'or past where the borders reach'
+  }
+
   private paint(figures: Overview): void {
     const { ground, routes, marks, time } = figures
+    this.paintCountries(figures.countries)
 
     element('stat-area').textContent = formatArea(ground.square_km)
     element('stat-share').textContent = formatShare(ground.percent_of_planet)

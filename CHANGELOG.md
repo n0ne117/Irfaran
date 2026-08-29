@@ -11,6 +11,29 @@ Entries are written for someone reading the release page, not for someone readin
 
 Nothing yet.
 
+## [0.19.2] - 2026-08-26
+
+### Added
+- **Countries visited, and how much of each.** Thirteen of them on this archive: Austria at 128.6 km² and 0.15% of the country, then Italy, Czechia, Germany, Slovenia, Croatia, Hungary, and on down to Spain at five thousand square metres.
+
+  The archive knows where somebody has been and nothing about whose land it is, and the basemap carries border *lines* rather than closed shapes, so there is nothing in it to test a point against. This is therefore the one piece of Irfaran that comes from somewhere else: **Natural Earth's 1:10m country polygons**, public domain, 2.26 MB, built by `scripts/build_countries.py` and committed so the file is reproducible rather than mysterious.
+
+### Note
+*"Nothing says bad code more than hiking near the border and suddenly Switzerland is on the List."* That is the whole difficulty, and there are three defences.
+
+**The most detailed free polygons, with no simplification at all.** Simplification is exactly what cuts corners off borders, so the file is two megabytes rather than two hundred kilobytes. As a check on both the polygons and the spherical-area maths, the computed areas land within half a percent of published figures: Austria 83,756 km² against 83,879, Switzerland 41,326 against 41,285.
+
+**Attribution per pixel, not per tile.** A zoom 14 tile is over a kilometre across at these latitudes; handing a whole one to whichever country its centre falls in would invent a kilometre of the wrong country along every border in the archive. Pixels are six metres. A pixel two polygons both claim goes to the first in a stable order, so the total can never exceed the ground actually cleared — and it is asserted to add up exactly, with what is in no country at all reported separately as *at sea*.
+
+**A floor, with everything below it still shown.** A country needs 20,000 m² — a kilometre of the corridor a track leaves — before it is called a visit. Anything under that is listed separately rather than dropped, because that is precisely where an approximate border would turn up, and saying so beats deciding quietly in either direction.
+
+And one rule that no threshold could have replaced. The first run demoted **Spain** to marginal on 5,279 m², which turned out to be two pins on Gran Canaria — a real holiday, recorded as pins rather than tracks. So: **somewhere a pin was dropped always counts**, however little ground it covers. A pin is the one thing a generalised border cannot invent.
+
+Twelve seconds for the whole archive, cached against the same fingerprint as the rest of the figures.
+
+### Fixed
+- **`data/` in `.gitignore` and `.dockerignore` was unanchored**, so it matched `api/irfaran/data/` as well as the bind mount it was written for — the country file would have been invisible to git and absent from the image. Both are now `/data/`. The same trap as `*.db` hiding a test fixture, one directory along.
+
 ## [0.19.1] - 2026-08-26
 
 ### Added
