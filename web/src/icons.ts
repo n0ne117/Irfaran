@@ -79,6 +79,15 @@ const SHAPES: Record<string, Shape[]> = {
     { line: [19, 5, 5, 19] },
   ],
 
+  // A lower case i in a circle. The dot is a tiny circle rather than a
+  // zero-length line, which browsers draw as a dot only if they honour round
+  // caps on an empty subpath - and not all of them do.
+  info: [
+    { circle: [12, 12, 9.5] },
+    { line: [12, 11, 12, 16.6] },
+    { circle: [12, 7.5, 0.35] },
+  ],
+
   // A lens and its handle.
   search: [
     { circle: [10.5, 10.5, 6.5] },

@@ -11,6 +11,13 @@ Entries are written for someone reading the release page, not for someone readin
 
 Nothing yet.
 
+## [0.19.3] - 2026-08-30
+
+### Changed
+- **Statistics has its own page**, off a new **ⓘ** button beside the pin switch on the map tools. It arrived as the thirteenth tab of a settings sheet, which is not where anybody looks for what their archive adds up to — and nothing on it is a setting: there is nothing there to change, only counts of what is already there. Opening it closes whatever else was open, Escape closes it, and it still asks the server nothing until it is opened for the first time.
+
+- **The country list stops at fifteen and scrolls.** Seventeen countries made a page that kept growing downwards and pushed the other five sections off the end of it. The height is arithmetic rather than a guess — fifteen rows, the gaps between them, and a few millimetres over, so the sixteenth country shows as a sliver: a scrollbar says there is more on the right, and a row cut in half says it where the eye already is. A long country name shortens rather than wrapping into a row that would clip it.
+
 ## [0.19.2] - 2026-08-26
 
 ### Added

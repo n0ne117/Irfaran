@@ -527,7 +527,10 @@ a {
   cursor: pointer;
 }
 
-.tab-panel {
+/* Sections in columns: the settings tabs, and the statistics sheet, which
+ * has no tabs but wants the same shelf. */
+.tab-panel,
+.sheet-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(19rem, 1fr));
   gap: 1rem;
@@ -2409,21 +2412,49 @@ body[data-token='missing'] #review-badge {
   font-size: 0.78rem;
 }
 
+/* Fifteen countries, then it scrolls.
+ *
+ * Seventeen of them is a page that keeps growing downwards and pushes
+ * everything else off the bottom, and the list is not the only thing here.
+ * The height is arithmetic rather than a guess, which is why the rows are a
+ * fixed height: fifteen rows, the gaps between them, and a few millimetres
+ * over - so the sixteenth country shows as a sliver. A scrollbar on the right
+ * says there is more; a row cut off says it where the eye already is. */
 .country-list {
+  --country-row: 1.5rem;
+  --country-gap: 0.1rem;
+  --country-rows: 15;
   display: flex;
   flex-direction: column;
-  gap: 0.1rem;
+  gap: var(--country-gap);
+  max-height: calc(
+    var(--country-rows) * (var(--country-row) + var(--country-gap)) + 0.4rem
+  );
   margin: 0.4rem 0 0.6rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
 }
 
 .country-row {
   display: grid;
   grid-template-columns: 1fr auto 4.5rem;
-  align-items: baseline;
+  box-sizing: border-box;
+  height: var(--country-row);
+  align-items: center;
   gap: 0.6rem;
   padding: 0.15rem 0;
   border-bottom: 1px solid color-mix(in srgb, var(--line) 55%, transparent);
   font-size: 0.82rem;
+}
+
+/* A country with a long name shortens rather than wrapping into the row
+ * below it, which the fixed height would otherwise clip mid-letter. */
+.country-row > span:first-child {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .country-area {

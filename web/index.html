@@ -157,6 +157,16 @@
       >
         <span data-icon="eye" data-icon-size="17"></span>
       </button>
+      <!-- What the archive adds up to. Its own sheet rather than a settings
+           tab: none of it is a setting. -->
+      <button
+        id="stats-toggle"
+        class="icon-button"
+        title="Statistics"
+        aria-label="Statistics"
+      >
+        <span data-icon="info" data-icon-size="17"></span>
+      </button>
     </div>
 
     <!-- Zoom, vertical, left of the map at mid height. -->
@@ -411,7 +421,6 @@
         <button type="button" role="tab" data-tab="progress" aria-selected="false">In progress</button>
         <button type="button" role="tab" data-tab="history" aria-selected="false">History</button>
         <button type="button" role="tab" data-tab="basemap" aria-selected="false">Basemap</button>
-        <button type="button" role="tab" data-tab="statistics" aria-selected="false">Statistics</button>
         <button type="button" role="tab" data-tab="about" aria-selected="false">About</button>
       </nav>
 
@@ -1068,9 +1077,59 @@
           </section>
         </div>
 
-        <!-- Not gated: these are counts of somebody's own map, and the map is
-             already readable without a token. -->
-        <div class="tab-panel" data-tab="statistics" hidden>
+        <div class="tab-panel" data-tab="about" hidden>
+          <section>
+            <h2>Version</h2>
+            <p class="version-line"><a id="version-link" rel="noreferrer">unknown</a></p>
+            <p id="version-mismatch" class="status-line" data-state="bad" hidden></p>
+            <p class="hint">Links to the changelog, which covers every release.</p>
+          </section>
+
+          <section class="span-all">
+            <h2>Diagnostics</h2>
+            <pre id="diagnostics" class="diagnostics">Checking.</pre>
+            <div class="button-row">
+              <button id="diagnostics-refresh" type="button">Refresh</button>
+              <button id="diagnostics-copy" type="button">Copy</button>
+            </div>
+            <p class="hint">
+              What the map thinks is going on. Worth reading if the map looks
+              empty.
+            </p>
+          </section>
+
+          <section>
+            <h2>Credits</h2>
+            <p class="hint">
+              Map data &copy;
+              <a href="https://www.openstreetmap.org/copyright" rel="noreferrer">OpenStreetMap</a>
+              contributors, tiles by
+              <a href="https://protomaps.com" rel="noreferrer">Protomaps</a>,
+              rendered with
+              <a href="https://maplibre.org/" rel="noreferrer">MapLibre</a>.
+            </p>
+            <p class="hint">
+              <a href="https://github.com/n0ne117/Irfaran" rel="noreferrer">Source and licence</a>
+            </p>
+          </section>
+        </div>
+      </div>
+    </aside>
+
+    <!-- The figures, in a sheet of their own rather than a settings tab:
+         nothing here is a setting, and none of it is gated - these are
+         counts of somebody's own map, and the map is already readable
+         without a token. -->
+    <aside id="stats-page" class="sheet" hidden>
+      <header class="sheet-head">
+        <h1>Statistics</h1>
+        <button id="stats-close" type="button" class="icon-button" aria-label="Close statistics">
+          &times;
+        </button>
+      </header>
+
+      <div class="sheet-body">
+        <div class="sheet-grid">
           <section class="span-2">
             <h2>Ground covered</h2>
             <p class="stat-headline" id="stat-area">—</p>
@@ -1154,43 +1213,6 @@
             <p class="hint">
               Worked out once and remembered until the archive changes —
               measuring the ground reads every fog blob there is.
-            </p>
-          </section>
-        </div>
-
-        <div class="tab-panel" data-tab="about" hidden>
-          <section>
-            <h2>Version</h2>
-            <p class="version-line"><a id="version-link" rel="noreferrer">unknown</a></p>
-            <p id="version-mismatch" class="status-line" data-state="bad" hidden></p>
-            <p class="hint">Links to the changelog, which covers every release.</p>
-          </section>
-
-          <section class="span-all">
-            <h2>Diagnostics</h2>
-            <pre id="diagnostics" class="diagnostics">Checking.</pre>
-            <div class="button-row">
-              <button id="diagnostics-refresh" type="button">Refresh</button>
-              <button id="diagnostics-copy" type="button">Copy</button>
-            </div>
-            <p class="hint">
-              What the map thinks is going on. Worth reading if the map looks
-              empty.
-            </p>
-          </section>
-
-          <section>
-            <h2>Credits</h2>
-            <p class="hint">
-              Map data &copy;
-              <a href="https://www.openstreetmap.org/copyright" rel="noreferrer">OpenStreetMap</a>
-              contributors, tiles by
-              <a href="https://protomaps.com" rel="noreferrer">Protomaps</a>,
-              rendered with
-              <a href="https://maplibre.org/" rel="noreferrer">MapLibre</a>.
-            </p>
-            <p class="hint">
-              <a href="https://github.com/n0ne117/Irfaran" rel="noreferrer">Source and licence</a>
             </p>
           </section>
         </div>

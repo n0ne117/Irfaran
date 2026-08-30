@@ -1118,3 +1118,91 @@ class TestTypeAhead:
         assert body.count("!== this.asked") >= 2, (
             "the late-answer guard has to cover the failure path as well"
         )
+
+
+class TestStatisticsIsItsOwnPage:
+    """Off the toolbar rather than out of Settings.
+
+    It shipped as the thirteenth tab of a settings sheet, which is not where
+    anybody looks for what their archive adds up to - and none of it is a
+    setting: there is nothing on that page to change, only counts of what is
+    already there.
+    """
+
+    def test_there_is_a_button_beside_the_pin_switch(self) -> None:
+        markup = (WEB / "index.html").read_text()
+        tools = markup.index('class="map-tools"')
+        pins = markup.index('id="pins-toggle"')
+        stats = markup.index('id="stats-toggle"')
+        assert tools < pins < stats, "the statistics button left the map tools"
+
+    def test_it_is_a_lower_case_i(self) -> None:
+        assert 'data-icon="info"' in (WEB / "index.html").read_text()
+        # icon() throws for a name it does not know, which would take out
+        # hydrateIcons and every icon in the static chrome with it.
+        assert "\n  info: [" in source("icons.ts")
+
+    def test_it_is_no_longer_a_settings_tab(self) -> None:
+        markup = (WEB / "index.html").read_text()
+        assert 'data-tab="statistics"' not in markup, (
+            "the page is in two places at once; wireTabs hides every "
+            ".tab-panel in the document, including one it has no button for"
+        )
+
+    def test_the_sheet_closes_the_others(self) -> None:
+        # Sheets is what makes them mutually exclusive, and what Escape and
+        # the close buttons go through. A sheet outside that list stays open
+        # underneath whatever is opened next.
+        text = source("main.ts")
+        line = next(l for l in text.splitlines() if "'places-page', 'review-page'" in l)
+        assert "'stats-page'" in line
+
+    def test_the_figures_are_fetched_when_it_is_opened(self) -> None:
+        # Reading every fog blob in the archive is not something to do on
+        # startup for a page nobody has asked for.
+        body = body_of(source("main.ts"), "  wirePart('stats', () => {")
+        assert "sheets.toggle('stats-page')" in body
+        assert "stats.watch(" in body
+
+    def test_it_needs_no_token(self) -> None:
+        markup = (WEB / "index.html").read_text()
+        gated = gated_ids(markup)
+        for name in ("stats-toggle", "stats-page", "stat-area", "stats-refresh"):
+            assert name in markup, f"{name} is gone from the markup"
+            assert name not in gated, (
+                f"{name} is behind the token gate. These are counts of "
+                "somebody's own map, and the map reads without a token."
+            )
+
+
+class TestTheCountryListStopsGrowing:
+    """Seventeen countries is a page that pushes everything else off the end.
+
+    The list is one section of six, and it is the only one that grows without
+    limit as more of the world is walked.
+    """
+
+    def block(self) -> str:
+        css = source("style.css")
+        return css[css.index(".country-list {") : css.index(".country-area {")]
+
+    def test_it_scrolls_on_its_own(self) -> None:
+        block = self.block()
+        assert "overflow-y: auto" in block
+        assert "max-height:" in block
+
+    def test_it_stops_at_fifteen(self) -> None:
+        assert "--country-rows: 15;" in self.block()
+
+    def test_the_cap_is_arithmetic_rather_than_a_guess(self) -> None:
+        # A height in rem picked to look about right is a height that is wrong
+        # at another font size. The rows are told what they are.
+        block = self.block()
+        assert "height: var(--country-row);" in block
+        assert "box-sizing: border-box" in block
+        assert "var(--country-rows)" in block and "var(--country-gap)" in block
+
+    def test_a_long_name_shortens_rather_than_wrapping(self) -> None:
+        # Fixed-height rows clip a second line mid-letter.
+        block = self.block()
+        assert "text-overflow: ellipsis" in block

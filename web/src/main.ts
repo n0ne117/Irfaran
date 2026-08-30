@@ -633,7 +633,7 @@ async function start(): Promise<void> {
   // whole function is building.
   let sheetsChanged: () => void = () => {}
   const sheets = new Sheets(
-    ['panel', 'places-page', 'review-page', 'pin-import-page'],
+    ['panel', 'places-page', 'review-page', 'pin-import-page', 'stats-page'],
     () => sheetsChanged(),
   )
   element('panel-toggle').addEventListener('click', () => sheets.toggle('panel'))
@@ -1023,11 +1023,18 @@ async function start(): Promise<void> {
   wirePart('labels', () => labels.wire())
   void labels.load()
 
-  // Counts of the archive. Fetched once when the tab is first opened rather
-  // than polled: measuring the cleared ground reads every fog blob there is.
+  // Counts of the archive, in a sheet of their own off the toolbar - none of
+  // it is a setting. Fetched once when that sheet is first opened rather than
+  // polled: measuring the cleared ground reads every fog blob there is.
   const stats = new Stats()
-  wirePart('stats', () => stats.wire())
-  watchers.push((tab) => stats.watch(tab === 'statistics'))
+  wirePart('stats', () => {
+    stats.wire()
+    element('stats-toggle').addEventListener('click', () => {
+      sheets.toggle('stats-page')
+      stats.watch(!element('stats-page').hidden)
+    })
+    element('stats-close').addEventListener('click', () => sheets.close())
+  })
 
   const sources = new Sources()
   void sources.load()
