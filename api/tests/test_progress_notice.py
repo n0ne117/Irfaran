@@ -32,7 +32,7 @@ from pathlib import Path
 
 import pytest
 
-from .test_markup import web_dir
+from .test_markup import sources, web_dir
 
 WEB = web_dir()
 
@@ -1282,3 +1282,51 @@ class TestGlobeOrMercator:
     def test_the_choice_survives_a_reload(self) -> None:
         body = body_of(source("map.ts"), "export function setMapProjection(")
         assert "localStorage.setItem" in body
+
+
+class TestNothingShowsThroughTheEarth:
+    """Pins on the far side of the globe, which MapLibre fades but does not hide.
+
+    A covered marker is drawn at 20% opacity by default, so a globe centred on
+    Europe carried a column of ghost pins over the Pacific - Austria, seen
+    through the planet. The library knows they are occluded; it just does not
+    do anything final about it.
+    """
+
+    def test_every_marker_and_popup_comes_from_one_place(self) -> None:
+        # Five call sites across four files, and the next one will not
+        # remember. Constructing them anywhere else means a pin that shows
+        # through the earth again.
+        loose = []
+        for path in sources():
+            if path.name == "markers.ts":
+                continue
+            text = path.read_text()
+            if "new Marker(" in text or "new Popup(" in text:
+                loose.append(path.name)
+        assert not loose, (
+            f"{', '.join(loose)} builds its own marker or popup, so it does "
+            "not know about the globe. Use mapMarker/mapPopup from markers.ts."
+        )
+
+    def test_a_covered_pin_is_gone_rather_than_faded(self) -> None:
+        text = source("markers.ts")
+        assert "const COVERED = 0" in text
+        assert "opacityWhenCovered: COVERED" in text
+        assert "locationOccludedOpacity: COVERED" in text
+
+    def test_a_call_site_can_still_say_what_it_wants(self) -> None:
+        # The spread goes last, so a marker that needs its own element or
+        # colour is not overwritten by the default it is being given.
+        text = source("markers.ts")
+        for line in ("opacityWhenCovered: COVERED", "locationOccludedOpacity: COVERED"):
+            at = text.index(line)
+            assert "...options" in text[at : text.index("}", at)], line
+
+    def test_an_invisible_pin_does_not_swallow_a_click(self) -> None:
+        # The half of "not shown" that opacity does not cover: a marker at
+        # zero opacity is still a target, so a pin in New Zealand would eat a
+        # click meant for the Atlantic in front of it.
+        css = source("style.css")
+        block = css[css.index(".maplibregl-marker-covered {") :][:200]
+        assert "pointer-events: none" in block

@@ -7,8 +7,8 @@
 // which goes through the same path as everything else. Dropping a pin on the
 // village you grew up in reveals it exactly as walking there would have.
 
-import { Marker, Popup } from 'maplibre-gl'
-import type { Map as MapLibreMap } from 'maplibre-gl'
+import type { Map as MapLibreMap, Marker, Popup } from 'maplibre-gl'
+import { mapMarker, mapPopup } from './markers'
 
 import { ApiError, apiGet, apiSend, getToken } from './api'
 import { icon } from './icons'
@@ -252,7 +252,7 @@ export class Places {
     this.disarmDrop()
     this.pending?.marker.remove()
 
-    const marker = new Marker({ color: NO_LABEL_COLOUR, draggable: true })
+    const marker = mapMarker({ color: NO_LABEL_COLOUR, draggable: true })
       .setLngLat([lon, lat])
       .addTo(this.map)
 
@@ -271,7 +271,7 @@ export class Places {
     // position first and a row in a list second, and a form three hundred
     // pixels away from the thing it describes makes you hold the position in
     // your head while you type.
-    const popup = new Popup({ offset: 26, closeOnClick: false, maxWidth: '19rem' })
+    const popup = mapPopup({ offset: 26, closeOnClick: false, maxWidth: '19rem' })
       .setDOMContent(this.formFor(null))
     marker.setPopup(popup)
     marker.togglePopup()
@@ -584,9 +584,9 @@ export class Places {
     for (const place of this.places) {
       if (this.isHidden(place)) continue
 
-      const marker = new Marker({ color: this.labelOf(place)?.colour ?? NO_LABEL_COLOUR })
+      const marker = mapMarker({ color: this.labelOf(place)?.colour ?? NO_LABEL_COLOUR })
         .setLngLat([place.lon, place.lat])
-        .setPopup(new Popup({ offset: 26 }).setDOMContent(this.popupFor(place)))
+        .setPopup(mapPopup({ offset: 26 }).setDOMContent(this.popupFor(place)))
         .addTo(this.map)
 
       const element_ = marker.getElement()
@@ -716,7 +716,7 @@ export class Places {
     this.markers.delete(place.id)
     this.pending?.marker.remove()
 
-    const marker = new Marker({
+    const marker = mapMarker({
       color: this.labelOf(place)?.colour ?? NO_LABEL_COLOUR,
       draggable: true,
     })
@@ -731,7 +731,7 @@ export class Places {
       this.showCoords()
     })
 
-    const popup = new Popup({ offset: 26, closeOnClick: false, maxWidth: '19rem' })
+    const popup = mapPopup({ offset: 26, closeOnClick: false, maxWidth: '19rem' })
       .setDOMContent(this.formFor(place))
     marker.setPopup(popup)
     marker.togglePopup()

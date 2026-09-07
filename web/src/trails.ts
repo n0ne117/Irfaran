@@ -5,7 +5,7 @@
 // there. This is the one response in Irfaran allowed to grow with the data,
 // and it is bounded by the viewport and a hard cap.
 
-import { Popup } from 'maplibre-gl'
+import { mapPopup } from './markers'
 import type {
   DataDrivenPropertyValueSpecification,
   Map as MapLibreMap,
@@ -422,7 +422,7 @@ export class Trails {
     const feature = event.features?.[0]
     if (!feature) return
 
-    new Popup({ offset: 8 })
+    mapPopup({ offset: 8 })
       .setLngLat(event.lngLat as never)
       .setHTML(describe(feature.properties))
       .addTo(this.map)

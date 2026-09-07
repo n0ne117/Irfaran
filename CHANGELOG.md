@@ -11,6 +11,17 @@ Entries are written for someone reading the release page, not for someone readin
 
 Nothing yet.
 
+## [0.19.5] - 2026-08-30
+
+### Fixed
+- **Pins no longer show through the earth.** On the globe, a marker on the far side of the planet was drawn at 20% rather than hidden — so a globe centred on Europe carried a column of ghost pins over the Pacific. MapLibre works out that a location is occluded; it just fades it by default instead of putting it away. Now it is put away, popups included.
+
+  Not made a setting. *"Show me the things that are behind the earth"* is not a preference anybody holds — it is what a flat map does because it has no way to know, and a globe knows.
+
+  The other half of *not shown* is that an invisible element still catches a click, so a pin in New Zealand would have swallowed one meant for the Atlantic in front of it. MapLibre marks a covered marker with a class, and that class now takes it out of pointer reach too.
+
+  Every marker and popup in Irfaran now comes from one place rather than from five call sites across four files, which is the only version of this fix that survives the next pin being added.
+
 ## [0.19.4] - 2026-08-30
 
 ### Added

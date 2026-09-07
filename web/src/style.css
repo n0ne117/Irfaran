@@ -2112,6 +2112,17 @@ button:disabled {
   display: none;
 }
 
+/* Behind the earth.
+ *
+ * MapLibre works out that a location is on the far side of the globe and
+ * marks the marker, but only fades it - the pin is put at zero opacity here
+ * instead, in markers.ts. An invisible element still catches a click, though,
+ * so a pin in New Zealand would swallow one meant for the Atlantic in front
+ * of it. This is the half of "not shown" that opacity does not cover. */
+.maplibregl-marker-covered {
+  pointer-events: none;
+}
+
 .pin-editor {
   padding: 0.6rem 0.7rem 0.75rem;
   border: 1px solid var(--line);

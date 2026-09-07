@@ -16,8 +16,8 @@
 // basemap under it. Three hundred and twenty-four decisions is a long sitting,
 // so Enter and Delete both save-and-advance - the mouse is the slow way round.
 
-import { Marker, Popup } from 'maplibre-gl'
-import type { Map as MapLibreMap } from 'maplibre-gl'
+import type { Map as MapLibreMap, Marker } from 'maplibre-gl'
+import { mapMarker, mapPopup } from './markers'
 
 import { ApiError, apiGet, apiSend, getToken } from './api'
 import { element } from './ui'
@@ -308,11 +308,11 @@ export class PinImport {
     this.clearMarkers()
     for (const item of this.items) {
       if (item.state === 'discarded') continue
-      const marker = new Marker({
+      const marker = mapMarker({
         color: item.state === 'saved' ? CHOSEN_COLOUR : STAGED_COLOUR,
       })
         .setLngLat([item.lon, item.lat])
-        .setPopup(new Popup({ offset: 26 }).setText(item.name))
+        .setPopup(mapPopup({ offset: 26 }).setText(item.name))
         .addTo(this.map)
       marker.getElement().classList.add('staged-pin')
       marker.getElement().addEventListener('click', () => this.select(item.id))

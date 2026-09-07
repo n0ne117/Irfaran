@@ -15,8 +15,8 @@
 // has been saved. Saving it is one click, and until then it costs nothing: no
 // event, no render, no row.
 
-import { Marker, Popup } from 'maplibre-gl'
-import type { Map as MapLibreMap } from 'maplibre-gl'
+import type { Map as MapLibreMap, Marker } from 'maplibre-gl'
+import { mapMarker, mapPopup } from './markers'
 
 import { ApiError, apiGet, apiSend, getToken } from './api'
 import { element } from './ui'
@@ -310,9 +310,9 @@ export class Search {
     element_.className = 'search-pin'
     element_.title = found.label
 
-    this.pin = new Marker({ element: element_, anchor: 'bottom' })
+    this.pin = mapMarker({ element: element_, anchor: 'bottom' })
       .setLngLat([found.lon, found.lat])
-      .setPopup(new Popup({ offset: 14, closeButton: false }).setDOMContent(
+      .setPopup(mapPopup({ offset: 14, closeButton: false }).setDOMContent(
         this.offer(found),
       ))
       .addTo(this.map)
