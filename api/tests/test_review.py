@@ -810,3 +810,68 @@ def _stub_intervals(conn, monkeypatch) -> None:
         "download_streams",
         lambda key, identifier: {item["type"]: item for item in streams},
     )
+
+
+class TestStillCollectingMeansToday:
+    """The badge on a waiting batch, which was answering the wrong question.
+
+    Reported from the live instance: two days of Overland were waiting, the
+    5th and the 6th, and the 5th said *still collecting* on the 7th. It was
+    reading `sealed`, and a batch stays unsealed until somebody opens it - so
+    every day that had never been reviewed claimed to be still filling up.
+
+    The honest question is whether a fix arriving now would join this batch,
+    which is a comparison against the day key the ingest would give it.
+    """
+
+    def days_waiting(self, conn) -> dict[str, dict]:
+        return {str(item["day"]): item for item in review.waiting(conn)}
+
+    def test_today_is_still_collecting(self, conn) -> None:
+        now = datetime.now(timezone.utc).replace(hour=6, minute=0, second=0)
+        review.hold_fixes(conn, "overland", fixes(20, start=now))
+        today = now.strftime("%Y-%m-%d")
+        item = self.days_waiting(conn)[today]
+        assert item["sealed"] is False
+        assert item["collecting"] is True
+
+    def test_a_day_that_is_over_is_not(self, conn) -> None:
+        two_days_ago = datetime.now(timezone.utc) - timedelta(days=2)
+        review.hold_fixes(
+            conn, "overland", fixes(20, start=two_days_ago.replace(hour=9))
+        )
+        item = self.days_waiting(conn)[two_days_ago.strftime("%Y-%m-%d")]
+        # Still joinable if that phone finally uploads, and still not something
+        # to tell somebody to wait for.
+        assert item["sealed"] is False
+        assert item["collecting"] is False
+
+    def test_both_at_once_is_the_reported_case(self, conn) -> None:
+        now = datetime.now(timezone.utc)
+        yesterday = now - timedelta(days=1)
+        review.hold_fixes(conn, "overland", fixes(20, start=yesterday.replace(hour=9)))
+        review.hold_fixes(conn, "overland", fixes(20, start=now.replace(hour=6)))
+
+        waiting = self.days_waiting(conn)
+        collecting = sorted(day for day, item in waiting.items() if item["collecting"])
+        assert collecting == [now.strftime("%Y-%m-%d")], (
+            "either yesterday claims to be collecting, or today has stopped "
+            "saying it"
+        )
+
+    def test_opening_todays_batch_ends_it(self, conn) -> None:
+        now = datetime.now(timezone.utc).replace(hour=6, minute=0, second=0)
+        held = review.hold_fixes(conn, "overland", fixes(20, start=now))
+        review.open_for_review(conn, next(iter(held.batches)))
+        item = self.days_waiting(conn)[now.strftime("%Y-%m-%d")]
+        assert item["sealed"] is True
+        assert item["collecting"] is False
+
+    def test_a_workout_never_claims_to_be_collecting(self, conn) -> None:
+        # Sealed from birth: it was finished before it arrived.
+        track = common.Track(
+            name="a ride", fixes=fixes(6), source_id="i123"
+        )
+        review.hold_track(conn, "intervals", track)
+        item = review.waiting(conn)[0]
+        assert item["collecting"] is False

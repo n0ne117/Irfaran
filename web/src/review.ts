@@ -39,6 +39,7 @@ export interface Waiting {
   title: string
   day: string
   sealed: boolean
+  collecting: boolean
   edited: boolean
   points: number
   metres: number
@@ -413,7 +414,10 @@ export class Review {
         `${item.points.toLocaleString()} points · ${formatDistance(item.metres)}`
 
       row.append(title, detail)
-      if (!item.sealed) {
+      // Only for the day a phone is still reporting into. An unsealed batch
+      // from last week is joinable in principle and finished in practice, and
+      // saying otherwise reads as "wait, there is more coming".
+      if (item.collecting) {
         const open = document.createElement('span')
         open.className = 'review-item-open'
         open.textContent = 'still collecting'

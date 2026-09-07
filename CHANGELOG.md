@@ -11,6 +11,15 @@ Entries are written for someone reading the release page, not for someone readin
 
 Nothing yet.
 
+## [0.19.6] - 2026-08-30
+
+### Fixed
+- **"Still collecting" now means today.** A waiting Overland day said *still collecting* whether or not the day was over — two days waiting, the 5th and the 6th, and on the 7th the 5th still claimed to be filling up.
+
+  It was reading `sealed`, which answers a different question: a batch is sealed the moment somebody opens it to review, so *every* day nobody had looked at yet was unsealed and said so. The honest question is whether a fix arriving now would join this batch, which is a comparison against the day key the ingest would give it — and a day that is over is still joinable in principle, so it is not the same as unsealed.
+
+  Decided on the server, because the day keys are UTC: at one in the morning in Vienna the browser is already on tomorrow while the batch actually taking points is still today's.
+
 ## [0.19.5] - 2026-08-30
 
 ### Fixed

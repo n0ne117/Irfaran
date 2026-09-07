@@ -274,11 +274,22 @@ def _measured(fixes: list[common.Fix]) -> dict[str, object]:
     }
 
 
+def _today() -> str:
+    """The day key a fix arriving right now would be filed under.
+
+    UTC, because that is what the day keys are - a batch is a day of somebody's
+    tracking as the server groups it, not as their calendar reads it. Asked on
+    the server for the same reason: at one in the morning in Vienna the browser
+    is already on tomorrow while the batch still collecting points is today's.
+    """
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+
 def _day_of(fixes: list[common.Fix]) -> str:
     for fix in fixes:
         if fix.time is not None:
             return fix.time.astimezone(timezone.utc).strftime("%Y-%m-%d")
-    return datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    return _today()
 
 
 # ------------------------------------------------------------------- the edits
@@ -712,6 +723,11 @@ def _summary(row: sqlite3.Row) -> dict[str, object]:
         "title": edits.title or row["title"],
         "day": row["day"],
         "sealed": bool(row["sealed"]),
+        # Not the same question as "unsealed". A batch stays joinable until it
+        # is opened, so a day that is over is still technically open - but
+        # nothing more is coming, and saying "still collecting" about Saturday
+        # on Monday is telling somebody to wait for a bus that has gone.
+        "collecting": bool(not row["sealed"] and row["day"] == _today()),
         "edited": edits.touched,
         "points": int(row["points"]),
         "metres": float(row["metres"] or 0.0),

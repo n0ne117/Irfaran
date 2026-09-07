@@ -1330,3 +1330,39 @@ class TestNothingShowsThroughTheEarth:
         css = source("style.css")
         block = css[css.index(".maplibregl-marker-covered {") :][:200]
         assert "pointer-events: none" in block
+
+
+class TestStillCollectingIsAboutToday:
+    """The badge on a waiting batch asked the wrong question.
+
+    Reported from the live instance: the 5th and the 6th were waiting, and on
+    the 7th the 5th still said *still collecting*. It read `sealed`, and a
+    batch stays unsealed until somebody opens it - so every day nobody had
+    reviewed claimed to be filling up.
+    """
+
+    def test_the_badge_asks_whether_it_is_still_filling(self) -> None:
+        body = body_of(source("review.ts"), "  private paintList(): void {")
+        assert "item.collecting" in body
+        assert "!item.sealed" not in body, (
+            "unsealed means joinable, not filling - every unreviewed day is "
+            "unsealed"
+        )
+
+    def test_the_server_decides_which_day_is_today(self) -> None:
+        # The day keys are UTC. At one in the morning in Vienna the browser is
+        # already on tomorrow while the batch taking points is still today's,
+        # so this comparison cannot be made in the browser.
+        import inspect
+
+        from irfaran import review
+
+        text = inspect.getsource(review)
+        assert '"collecting"' in text and "_today()" in text
+
+        # And the browser does not work it out for itself.
+        body = body_of(source("review.ts"), "  private paintList(): void {")
+        assert "Date" not in body, (
+            "the list is comparing dates in the browser, which is the local "
+            "day rather than the day the batches are keyed by"
+        )
