@@ -442,6 +442,57 @@ If it ever lands: it is one more member of `MapProjection` in `web/src/map.ts`,
 the `disabled` off the button, and nothing else - the choice is already stored
 per browser and already read by `buildStyle`.
 
+## Look at a track from the import log
+
+**Wanted:** after a GPX or TCX import finishes, the name in the import log is a
+link. Clicking it opens a new tab showing that one track on the map, drawn the
+way the holding pen draws a route under review — the track alone, over the
+basemap, with everything else out of the way.
+
+Most of this exists. `review.ts` already frames one route on its own and hides
+the fog and the trail rasters while it does it (`setArchiveVisible`), and the
+pin import does the same trick for a staged pin. What is missing is a way to
+address a track from outside: the import log knows what it created, but there
+is nothing to link *to*.
+
+So the work is roughly:
+
+- **A URL that means one track.** Something like `#track=<event id>`, read on
+  startup, before the normal view is applied. This is the real piece of design:
+  Irfaran has no routing at all today, and one hash parameter is the thin end
+  of a wedge that ends in a router.
+- **An endpoint that returns one track's geometry** by event id. `/api/trails`
+  is bounded by a viewport and a cap, which is the wrong shape for "this one,
+  wherever it is".
+- **The import log keeping ids.** It reports names and outcomes; the event ids
+  are known at ingest and thrown away by the time the log is painted.
+
+**The thing to decide first:** whether that tab is a *view* or a *page*. A view
+is the whole app with one track showing, which is cheap and means the sidebar,
+the time bar and the settings are all still there behind a route that is not
+about them. A page is a stripped screen that shows a track and nothing else,
+which is more code and reads better. The review sidebar is the precedent for
+the first, and it is the cheaper of the two.
+
+Would also give a natural answer to something else: a track that has already
+landed cannot be looked at on its own today, which is the other half of
+*editing a track that has already landed*, further up.
+
+## Not doing: a polar projection
+
+Recorded because it looks like a bug and is not one. Everything is on the Web
+Mercator z14 grid, which stops at 85.0511°, and `geo.clamp_lat` clamps rather
+than refusing - so a fix nearer a pole than that is stored exactly as recorded
+and drawn on the top row of tiles, with the last 551 km to the pole collapsed
+onto one line. Area up there is undercounted by the same factor the projection
+stretches by: 0.044 km² per z14 tile at 85° against 2.776 km² at 47°.
+
+Doing it properly means a second tile pyramid in a polar projection - a
+separate grid, separate blobs, separate rendering, and a basemap that has no
+polar tiles to draw underneath it. That is a second map rather than a fix, for
+ground nobody in this archive is going to walk. Written up in the README so it
+is a documented limit rather than a surprise.
+
 ## Not doing: anything social
 
 Sharing, comparing, following, streaks, leaderboards. Recorded as a decision

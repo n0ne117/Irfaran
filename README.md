@@ -400,6 +400,34 @@ walked past rather than through. Rebuild it with:
 scripts/build_countries.py ne_10m_admin_0_countries.geojson
 ```
 
+## Where the map stops: 85 degrees
+
+Everything here is on the Web Mercator grid — the one every slippy map uses,
+and the one the basemap tiles are cut on. Mercator stretches towards the poles
+without limit, so it is cut off at **85.0511°**, and Irfaran clamps to that
+rather than refusing the point.
+
+A fix north of 85.0511° is therefore **stored exactly as recorded** and
+**drawn in the wrong place**. The event log keeps the real coordinates, a
+rebuild is still byte-identical, and distances are measured on the real
+numbers — but the tile it is painted into is the top row of the grid, so the
+last **551 km** to the pole all collapse onto one line.
+
+Two consequences worth knowing before they surprise anybody:
+
+- **Area is undercounted up there.** A z14 tile at 85° covers 0.044 km² of
+  ground against 2.776 km² at 47°, because that is exactly how much the
+  projection has stretched it. Ground cleared past the cut-off is weighted at
+  what the 85° row is worth.
+- **Countries come out right by luck.** Clamped, the north pole lands in no
+  country — *at sea*, which the Arctic Ocean is — and the south pole lands
+  inside Antarctica, which is where it is. Right answers, wrong reasons.
+
+Fixing it properly means a second tile pyramid in a polar projection, and the
+basemap has no polar tiles either. That is a second map, not a fix. Svalbard,
+Tromsø and Alert at 82.5° are all fine and correctly placed; the last 550 km
+is where the map stops telling the truth.
+
 ## Credits
 
 - [Fog of World](https://fogofworld.app/) — the original, and the source of the z14 grid design
