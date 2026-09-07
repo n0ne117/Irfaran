@@ -11,6 +11,22 @@ Entries are written for someone reading the release page, not for someone readin
 
 Nothing yet.
 
+## [0.19.4] - 2026-08-30
+
+### Added
+- **A globe.** Under Appearance, beside the borders and the scale bar: *Globe*, *Mercator*, and *Equal Earth* greyed out. The globe is a globe while you are looking at the world and flattens itself into Mercator on the way in, so a footpath is still drawn on something flat — that transition is MapLibre's own, not a zoom threshold picked here. Per browser, like the other viewing choices, so it needs no token and a read-only viewer gets it too. The globe is the default.
+
+  It cost one style property because every layer Irfaran draws is a stock type — the fog and the trail heat are rasters, the borders a line, the basemap vector. A custom WebGL layer is the thing that does not survive a reprojection, and there isn't one.
+
+### Note
+Two things checked in MapLibre's own source rather than assumed, because both would have been visible faults.
+
+**The poles.** The fog is a Mercator raster pyramid that stops at ±85°, and a globe shows you ±90 — so does the fog end in a bare cap? No: MapLibre adds pole geometry to the top and bottom tile rows of a raster source and stretches that edge row to the pole. Nobody has cleared any fog at 85° north, so the stretched row is uniform fog and the join is invisible.
+
+**The scale bar.** A single bar on a sphere can only be true at one point. MapLibre's control unprojects two points either side of the centre of the screen and measures the real distance between them, so it stays honest about the middle of the map and shrinks its own width to say so. Nothing to hide, and the hint under the setting stays true.
+
+**Equal Earth is blocked upstream, not unbuilt.** MapLibre has three projections compiled into its shaders and that is not one of them, so the option is shown disabled rather than left out — an absent option cannot say why it is absent. It is the one worth waiting for: it is equal-area, and Mercator is the projection that lies about exactly the quantity the statistics page reports.
+
 ## [0.19.3] - 2026-08-30
 
 ### Changed

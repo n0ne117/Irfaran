@@ -421,6 +421,27 @@ That is a document with a fifty-year life expectancy in a repository whose
 code has none. Worth writing down while the person who decided what `op` means
 is still available to ask.
 
+## Equal Earth, when MapLibre can draw it
+
+**Wanted:** the third projection, offered in Appearance and greyed out since
+0.19.4.
+
+Blocked upstream rather than unbuilt. MapLibre has exactly three projections -
+`mercator`, `globe` and `vertical-perspective` - and they are compiled into its
+shaders; there is no plugin interface to add a fourth. So this waits for
+MapLibre, and the placeholder exists to say so rather than to promise anything.
+
+Worth wanting for a reason beyond looks: Equal Earth is **equal-area**, and
+Mercator is the projection that lies about exactly the quantity the statistics
+page reports. The pixel weighting in `stats.py` exists to undo that distortion
+in the arithmetic; an equal-area projection would make the picture agree with
+the arithmetic by construction, so a cleared patch in Norway would look the
+size it is measured to be.
+
+If it ever lands: it is one more member of `MapProjection` in `web/src/map.ts`,
+the `disabled` off the button, and nothing else - the choice is already stored
+per browser and already read by `buildStyle`.
+
 ## Not doing: anything social
 
 Sharing, comparing, following, streaks, leaderboards. Recorded as a decision

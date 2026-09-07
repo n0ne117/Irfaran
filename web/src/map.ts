@@ -32,6 +32,7 @@ const FOG_OPACITY_KEY = 'irfaran.fog.opacity'
 const BORDERS_KEY = 'irfaran.borders'
 const SCALE_KEY = 'irfaran.scale'
 const HEAT_KEY = 'irfaran.trail.opacity'
+const PROJECTION_KEY = 'irfaran.projection'
 const TRAIL_LAYER = 'irfaran-trail'
 
 /** Deepest zoom the server renders fog and trail tiles at. Matches geo.MAX_Z. */
@@ -203,6 +204,66 @@ export function applyScale(map: MapLibreMap): void {
   map.getContainer().classList.toggle('map-scale-off', !getScaleVisible())
 }
 
+/**
+ * Mercator or a globe.
+ *
+ * `globe` is not "always a sphere": MapLibre transitions it to Mercator on the
+ * way in, so the world is round when you are looking at the world and flat by
+ * the time you are looking at a street. That is the whole feature, and it is
+ * one property - the alternative, `vertical-perspective`, is the sphere that
+ * never flattens, which is not what anybody wants to draw a footpath on.
+ *
+ * A browser choice like the borders and the scale bar - no token, nothing
+ * rendered server-side, nothing else's view changed. It has to be in
+ * buildStyle as well as here, because a theme switch is a setStyle with
+ * `diff: false` and a projection set only on the live map would be lost with
+ * everything else.
+ *
+ * Equal Earth is not an option because MapLibre has exactly three projections
+ * compiled into its shaders and that is not one of them. Stored values other
+ * than 'mercator' therefore land on the globe rather than on nothing.
+ */
+export type MapProjection = 'mercator' | 'globe'
+
+export function getMapProjection(): MapProjection {
+  try {
+    return window.localStorage.getItem(PROJECTION_KEY) === 'mercator'
+      ? 'mercator'
+      : 'globe'
+  } catch {
+    return 'globe'
+  }
+}
+
+export function setMapProjection(
+  map: MapLibreMap,
+  projection: MapProjection,
+): void {
+  try {
+    window.localStorage.setItem(PROJECTION_KEY, projection)
+  } catch {
+    /* a preference that cannot be stored is still worth applying now */
+  }
+  applyProjection(map)
+}
+
+/**
+ * Switch the live map over, without a restyle.
+ *
+ * setProjection throws while the style is still being parsed, which is a real
+ * window on a slow first load. The stored choice is the source of truth and
+ * buildStyle reads it, so the fallback is to wait for the map rather than to
+ * lose the click.
+ */
+export function applyProjection(map: MapLibreMap): void {
+  const apply = () => map.setProjection({ type: getMapProjection() })
+  try {
+    apply()
+  } catch {
+    map.once('load', apply)
+  }
+}
+
 
 export function setFogOpacity(map: MapLibreMap, opacity: number): void {
   const clamped = Math.max(0, Math.min(1, opacity))
@@ -304,6 +365,10 @@ export function buildStyle(setup: MapSetup): StyleSpec {
 
   return {
     version: 8,
+    // Read here rather than only applied to the live map: this is handed to
+    // setStyle with `diff: false` on every theme switch, which resets
+    // everything the style owns.
+    projection: { type: getMapProjection() },
     glyphs: `${ASSETS}/fonts/{fontstack}/{range}.pbf`,
     sprite: `${ASSETS}/sprites/v4/${setup.theme}`,
     sources,

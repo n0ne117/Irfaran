@@ -1206,3 +1206,79 @@ class TestTheCountryListStopsGrowing:
         # Fixed-height rows clip a second line mid-letter.
         block = self.block()
         assert "text-overflow: ellipsis" in block
+
+
+class TestGlobeOrMercator:
+    """A round world when you are looking at the world.
+
+    MapLibre's `globe` is not "always a sphere" - it transitions to Mercator on
+    the way in, so the world is round at world zoom and flat by the time it is
+    a street. Everything Irfaran draws is a stock raster, line or vector layer,
+    which is why this costs one style property rather than a rewrite: a custom
+    WebGL layer is the thing that does not survive a reprojection.
+    """
+
+    def markup(self) -> str:
+        return (WEB / "index.html").read_text()
+
+    def test_it_is_a_style_property_not_only_a_live_call(self) -> None:
+        # applyMapTheme is setStyle with `diff: false`, which resets everything
+        # the style owns. A projection set only on the live map is lost with
+        # the rest of it the first time somebody switches theme.
+        body = body_of(source("map.ts"), "export function buildStyle(")
+        assert "projection:" in body and "getMapProjection()" in body
+
+    def test_the_globe_is_the_default(self) -> None:
+        body = body_of(source("map.ts"), "export function getMapProjection(")
+        assert "'mercator'" in body
+        # Read as "mercator or else the globe", so a stored value from a
+        # version that offered something else lands somewhere that exists.
+        assert body.index("? 'mercator'") < body.index(": 'globe'")
+
+    def test_only_the_two_that_maplibre_can_draw_are_types(self) -> None:
+        # Three projections are compiled into MapLibre's shaders: mercator,
+        # globe and vertical-perspective. Equal Earth is not one of them, so
+        # nothing may be able to store it.
+        text = source("map.ts")
+        assert "export type MapProjection = 'mercator' | 'globe'" in text
+
+    def test_equal_earth_is_shown_and_switched_off(self) -> None:
+        markup = self.markup()
+        start = markup.index('id="map-projection"')
+        block = markup[start : markup.index("</div>", start)]
+        assert 'data-value="equal-earth"' in block, (
+            "the placeholder is gone; an absent option cannot say why it is "
+            "absent"
+        )
+        # A disabled button dispatches no click, so radioGroup cannot pick it.
+        after = block[block.index('data-value="equal-earth"') :]
+        assert "disabled" in after[: after.index(">")], (
+            "the Equal Earth button is live, so it can be selected and will "
+            "store a projection MapLibre cannot draw"
+        )
+
+    def test_switching_does_not_restyle(self) -> None:
+        # Nothing about the fog, the tracks or the basemap changes - only how
+        # the same tiles are laid out on the screen.
+        body = body_of(source("map.ts"), "export function applyProjection(")
+        assert "setProjection(" in body
+        assert "setStyle" not in body
+
+    def test_a_click_before_the_style_is_ready_is_not_lost(self) -> None:
+        # setProjection throws while the style is still being parsed.
+        body = body_of(source("map.ts"), "export function applyProjection(")
+        assert "catch" in body and "once('load'" in body
+
+    def test_it_is_a_browser_choice_and_needs_no_token(self) -> None:
+        for name in ("getMapProjection(", "setMapProjection("):
+            body = body_of(source("map.ts"), f"export function {name}")
+            assert "localStorage" in body
+            for call in ("apiGet", "apiSend", "fetch("):
+                assert call not in body, f"{name} talks to the server"
+        assert "map-projection" not in gated_ids(self.markup()), (
+            "the projection is drawn by this browser and needs no token"
+        )
+
+    def test_the_choice_survives_a_reload(self) -> None:
+        body = body_of(source("map.ts"), "export function setMapProjection(")
+        assert "localStorage.setItem" in body

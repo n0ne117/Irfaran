@@ -577,6 +577,37 @@
           </section>
 
           <section>
+            <h2>Projection</h2>
+            <div id="map-projection" class="segmented" role="group" aria-label="Map projection">
+              <button type="button" data-value="globe" aria-pressed="true">Globe</button>
+              <button type="button" data-value="mercator" aria-pressed="false">Mercator</button>
+              <button
+                type="button"
+                data-value="equal-earth"
+                aria-pressed="false"
+                disabled
+                title="MapLibre cannot draw this one yet"
+              >
+                Equal Earth
+              </button>
+            </div>
+            <p class="hint">
+              The globe is a globe while you are looking at the world and
+              flattens itself into Mercator on the way in, so a footpath is
+              still drawn on something flat. Per browser, like the borders and
+              the scale bar.
+            </p>
+            <p class="hint">
+              <strong>Equal Earth</strong> is greyed out rather than missing.
+              MapLibre has three projections compiled into its shaders and that
+              is not one of them, so there is nothing to switch on yet — but it
+              is the one worth waiting for: it is equal-area, and Mercator is
+              the projection that lies about exactly the thing the statistics
+              page measures.
+            </p>
+          </section>
+
+          <section>
             <h2>Scale bar</h2>
             <label class="check">
               <input id="show-scale" type="checkbox" checked />

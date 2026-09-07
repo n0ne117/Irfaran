@@ -28,6 +28,7 @@ import {
   createMap,
   getBordersVisible,
   getScaleVisible,
+  getMapProjection,
   getFogOpacity,
   getHeatOpacity,
   openArchive,
@@ -36,8 +37,10 @@ import {
   applyHeatOpacity,
   setBordersVisible,
   setScaleVisible,
+  setMapProjection,
   setFogOpacity,
   setHeatOpacity,
+  type MapProjection,
   type MapSetup,
 } from './map'
 import { Labels } from './labels'
@@ -763,6 +766,13 @@ async function start(): Promise<void> {
   applyScale(map)
 
   const fogColour = wireFogColour(map, options)
+
+  // Mercator or a globe that flattens itself on the way in. Applied to the
+  // live map rather than restyled: nothing about the fog, the tracks or the
+  // basemap changes, only how the same tiles are laid on the screen.
+  radioGroup<MapProjection>('map-projection', getMapProjection(), (value) => {
+    setMapProjection(map, value)
+  })
 
   radioGroup<UiTheme>('ui-theme', getUiTheme(), (value) => setUiTheme(value))
   radioGroup<MapTheme>('map-theme', getMapTheme(), (value) => {
