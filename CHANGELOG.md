@@ -11,6 +11,20 @@ Entries are written for someone reading the release page, not for someone readin
 
 Nothing yet.
 
+## [0.19.8] - 2026-09-08
+
+### Fixed
+- **An accepted track appears as it is drawn, instead of after a wait or a browser refresh.** The tiles are cached hard on purpose, so nothing new shows until their URLs change — and accepting a reviewed track changed them **once, immediately**, before the queue had drawn anything. That cached the *old* ground under the new URLs, and from then on the only things that could move the map on were the five-minute cache expiring and a manual reload. Which is exactly what it took.
+
+  Now the ground on screen is picked up every couple of seconds while the render runs, and once more when it stops. Drawing a stroke never had this problem because it waits for its render before refreshing; accepting a batch refreshed first and then waited.
+
+  It matters most for the case it was reported on: a live source appends to the day's line, so accepting an evening of Overland re-stamps the whole day — and waiting for all of it before showing any of it is the long wait.
+
+### Note
+Two properties of MapLibre make repeating the refresh reasonable rather than wasteful, and both were read out of its source rather than assumed. `setTiles` re-requests only the tiles **in view** and invalidates the rest, so this is the small portion of the map on screen and not the archive. And a reloading tile stays renderable until its replacement arrives — with `raster-fade-duration` at 0 the swap is instant, so there is no flicker and no blink to fog in between.
+
+What does not wait for a render still does not: the track is an event the moment it is accepted, so the vector trail layer draws it immediately at close zoom, and the time bar reloads in case it has gained a year.
+
 ## [0.19.7] - 2026-09-08
 
 ### Added

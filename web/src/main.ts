@@ -524,13 +524,43 @@ function wireReviewGates(refresh: () => void): void {
  * cancels the timer that hides a notice - the reason a bar once sat at three
  * quarters for good.
  */
-async function followTheQueue(status: Notice, summary: string): Promise<void> {
+/** How often the ground on screen is picked up again while a render runs. */
+const REDRAW_EVERY_MS = 2500
+
+/**
+ * Watch the queue draw what was just accepted, and show it arriving.
+ *
+ * The tiles are cached hard by design, so nothing new appears until the URLs
+ * change - and this used to change them once, immediately, before the queue
+ * had drawn anything. That cached the *old* ground under the new URLs, and
+ * from then on the only things that moved the map on were the cache expiring
+ * or a browser reload. Reported as exactly that: accept a track, then wait, or
+ * press refresh.
+ *
+ * So the redraw happens when there is something to see: every couple of
+ * seconds while the queue is working, and once more when it stops. Only the
+ * tiles on screen are re-fetched - `setTiles` reloads what is in view and
+ * nothing else - which is what makes doing it repeatedly reasonable. It
+ * matters most for the case it was reported on: a live source appends to the
+ * day's line, so accepting an evening of Overland re-stamps the whole day, and
+ * waiting for all of it before showing any of it is the long wait.
+ */
+async function followTheQueue(
+  status: Notice,
+  summary: string,
+  redraw: () => void,
+): Promise<void> {
   status.progress(0, 0, summary)
+  let painted = 0
   const finished = await watchRender((state) => {
-    if (state.state === 'running' || state.state === 'stopping') {
-      status.progress(state.done, state.total, `${summary} — drawing the map`)
-    }
+    if (state.state !== 'running' && state.state !== 'stopping') return
+    status.progress(state.done, state.total, `${summary} — drawing the map`)
+    const now = Date.now()
+    if (now - painted < REDRAW_EVERY_MS) return
+    painted = now
+    redraw()
   })
+  redraw()
   status.show(
     finished === null
       ? `${summary}. Still drawing on the server — Settings, In progress ` +
@@ -945,13 +975,18 @@ async function start(): Promise<void> {
   const review = new Review(map, {
     onOpen: () => sheets.open('review-page'),
     onApproved: (summary) => {
-      bustTileCache()
-      applyView(map, options)
+      // Straight away, because neither of these waits on a render: the track
+      // is an event the moment it is accepted, so the vector trail layer can
+      // draw it now, and the time bar may have gained a year.
       void timeline.load()
       void trails.refresh()
       // Accepting a track is a render, and it is the same render drawing a
-      // stroke is - so it is reported the same way, in the same place.
-      void followTheQueue(drawStatus, summary)
+      // stroke is - so it is reported the same way, in the same place. The
+      // ground underneath appears as the queue draws it.
+      void followTheQueue(drawStatus, summary, () => {
+        bustTileCache()
+        applyView(map, options)
+      })
     },
     setRestVisible: (visible) => {
       setArchiveVisible(map, visible)

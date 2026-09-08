@@ -857,7 +857,7 @@ class TestAcceptingATrackShowsOnTheBar:
     def test_there_is_one_follower_and_the_review_uses_it(self) -> None:
         text = source("main.ts")
         assert "async function followTheQueue(" in text
-        assert "void followTheQueue(drawStatus, summary)" in text
+        assert "void followTheQueue(drawStatus, summary," in text
 
     def test_it_watches_the_queue_rather_than_guessing(self) -> None:
         body = body_of(source("main.ts"), "async function followTheQueue(")
@@ -1366,3 +1366,68 @@ class TestStillCollectingIsAboutToday:
             "the list is comparing dates in the browser, which is the local "
             "day rather than the day the batches are keyed by"
         )
+
+
+class TestAnAcceptedTrackAppearsAsItIsDrawn:
+    """Reported: accept a track, then wait, or press refresh.
+
+    The tiles are cached hard on purpose, so nothing new appears until the URLs
+    change. They were changed once, immediately - before the queue had drawn
+    anything - which cached the *old* ground under the new URLs. From there the
+    only things that could move the map on were the cache expiring and a
+    browser reload, which is exactly what it took.
+    """
+
+    def follow(self) -> str:
+        return body_of(source("main.ts"), "async function followTheQueue(")
+
+    def approved(self) -> str:
+        body = source("main.ts")
+        start = body.index("onApproved: (summary) => {")
+        return body[start : body.index("setRestVisible:", start)]
+
+    def test_the_redraw_waits_for_the_queue(self) -> None:
+        body = self.approved()
+        assert "followTheQueue(" in body
+        # It may only happen as part of following the queue. Before that call
+        # is before the queue has drawn anything, which is the bug.
+        assert body.index("bustTileCache()") > body.index("followTheQueue("), (
+            "the tiles are picked up again the moment the accept returns, "
+            "which is before the queue has drawn any of them"
+        )
+
+    def test_it_redraws_while_the_render_runs(self) -> None:
+        # An evening of Overland re-stamps the whole day, so waiting for all of
+        # it before showing any of it is the long wait that was reported.
+        body = self.follow()
+        watching = body[body.index("watchRender(") : body.index("status.show(")]
+        assert "redraw()" in watching, "nothing is shown until the render ends"
+
+    def test_and_once_more_when_it_stops(self) -> None:
+        body = self.follow()
+        after = body[body.index("})", body.index("watchRender(")) :]
+        assert "redraw()" in after, (
+            "the last tiles drawn are never picked up, so the end of a render "
+            "is missing until something else redraws"
+        )
+
+    def test_the_redraws_are_rationed(self) -> None:
+        # The queue is polled every 700 ms and a redraw re-fetches every tile
+        # on screen. One per poll is three times more than anybody can see.
+        assert "const REDRAW_EVERY_MS" in source("main.ts")
+        assert "REDRAW_EVERY_MS" in self.follow()
+
+    def test_only_what_is_on_screen_is_fetched_again(self) -> None:
+        # setTiles re-requests the tiles in view and invalidates the rest,
+        # which is what makes doing this every few seconds reasonable. A
+        # setStyle here would rebuild the whole map instead.
+        body = body_of(source("map.ts"), "export function applyView(")
+        assert "setTiles" in body
+        assert "setStyle" not in body
+
+    def test_what_does_not_wait_on_a_render_does_not_wait(self) -> None:
+        # The track is an event the moment it is accepted, so the vector trail
+        # layer can draw it now, and the time bar may have gained a year.
+        body = self.approved()
+        assert "trails.refresh()" in body
+        assert "timeline.load()" in body
