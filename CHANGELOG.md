@@ -11,6 +11,21 @@ Entries are written for someone reading the release page, not for someone readin
 
 Nothing yet.
 
+## [0.19.7] - 2026-09-08
+
+### Added
+- **A small world map at the bottom of the statistics page.** Every country drawn, the visited ones in a colour, the ones under the floor in a third — because the list is careful to hold *too little to call a visit* apart from *visited*, and a picture that quietly promoted them would undo that.
+
+  **Drawn in Equal Earth**, which is equal-area: every country takes up its true share of the picture. This is the one page whose whole subject is *how much*, and Mercator is the projection that lies about exactly that — Greenland the size of Africa on a page that spends its effort weighting pixels by their real ground area. It is also the projection the map itself still cannot offer, because MapLibre has no shader for it; this is a picture the server draws with a formula and a polygon filler, so nothing stood in the way.
+
+### Note
+**Rendered on the server, and that was measured rather than assumed.** The polygons are 548,471 vertices. Decimated to half a degree — about one pixel at this size, so as coarse as they can be without showing — they are still 39,349 vertices in 818 rings: **346 KB** of vector path data for a thumbnail. The finished PNG is **13 KB**. So the picture is drawn where the polygons already are, cached on exactly the set of countries it shows, and the two megabytes never leave the machine.
+
+**That it is equal-area is a testable claim, so it is tested.** A country's share of the coloured pixels has to match its share of the planet, and it does — Canada against the United States, Russia against South Africa, Kazakhstan against Argentina, all within a few percent. The percent that is left is not the projection: filling a polygon into a bitmap includes its boundary, so a country gains half a pixel all the way round its coast, which is nothing for Algeria and a great deal for Canada's islands. Being a perimeter rather than an area, it halves as the picture grows — Russia against Brazil is 8% out at 960 pixels and 4% at 1920 — and there is a test that watches it shrink.
+
+### Fixed
+- **A country inside another country's hole was erased.** Found by the test for it: the first version punched holes out of the shared picture, so South Africa's Lesotho-shaped hole cut away the Lesotho already drawn underneath and left a Lesotho-shaped piece of sea. Each country is now drawn through a stencil of its own, so a hole subtracts that country and nothing else.
+
 ## [0.19.6] - 2026-08-30
 
 ### Fixed

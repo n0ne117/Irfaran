@@ -42,6 +42,7 @@ from irfaran import (  # noqa: I001
     tokens,
     trackers,
     transfer,
+    worldmap,
 )
 from irfaran.ingest import common, gpx, live, tcx
 
@@ -1372,6 +1373,43 @@ def statistics(
     forces it, for the button that says so.
     """
     return stats.overview(conn, refresh=refresh)
+
+
+@app.get("/api/stats/world.png")
+def statistics_world(
+    request: Request,
+    theme: str = "dark",
+    width: int = worldmap.DEFAULT_WIDTH,
+    conn: sqlite3.Connection = Depends(get_conn),
+) -> Response:
+    """The little world at the bottom of the statistics page.
+
+    Drawn here rather than in the browser because the polygons are two
+    megabytes and this is eight kilobytes - see worldmap.py for the numbers
+    that decided it. Reads the cached figures rather than recomputing them, so
+    asking for the picture never costs a pass over the fog.
+
+    A read, and ungated for the same reason the figures are.
+    """
+    figures = stats.overview(conn)
+    countries_seen = figures.get("countries", {})
+    if not isinstance(countries_seen, dict):
+        raise HTTPException(status_code=503, detail="The figures are not ready.")
+
+    def codes(key: str) -> frozenset[str]:
+        rows = countries_seen.get(key) or []
+        return frozenset(str(row["code"]) for row in rows)
+
+    try:
+        png = worldmap.render(codes("countries"), codes("marginal"), theme, width)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    etag = f'"{hashlib.md5(png, usedforsecurity=False).hexdigest()}"'
+    headers = {"Cache-Control": TILE_CACHE_CONTROL, "ETag": etag}
+    if unchanged(request, etag):
+        return Response(status_code=304, headers=headers)
+    return Response(content=png, media_type="image/png", headers=headers)
 
 
 # ------------------------------------------------------------------- review

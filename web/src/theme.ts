@@ -48,6 +48,19 @@ export function getMapTheme(): MapTheme {
 }
 
 /** Apply the interface theme to <html>. CSS does the rest. */
+/**
+ * The interface theme as it is being drawn, with `system` resolved.
+ *
+ * Everything in the CSS follows `data-theme` and never has to ask. The one
+ * exception is a picture the server draws - it has to be told which of the
+ * two palettes to use, and "system" is not one of them.
+ */
+export function shownUiTheme(): MapTheme {
+  const chosen = getUiTheme()
+  if (chosen !== 'system') return chosen
+  return darkQuery.matches ? 'dark' : 'light'
+}
+
 export function applyUiTheme(theme: UiTheme = getUiTheme()): void {
   document.documentElement.dataset.theme = theme
 }

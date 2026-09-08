@@ -2473,6 +2473,78 @@ body[data-token='missing'] #review-badge {
   font-variant-numeric: tabular-nums;
 }
 
+/* The little world.
+ *
+ * A PNG the server draws, with a transparent ground so the section it sits in
+ * shows through - which is why there is no background here and why the aspect
+ * ratio is set on the element: the image arrives late, and a box that changes
+ * height when it does would shift everything underneath it. */
+.world-map {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 960 / 467;
+  margin: 0.2rem 0 0.5rem;
+}
+
+.stat-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.9rem;
+  align-items: center;
+  margin: 0 0 0.5rem;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+/* The three states, in the colours worldmap.py fills them with. Written out
+   rather than shared, because one of them is a Python palette and the other a
+   stylesheet - there is a test holding the two together. */
+.world-key {
+  display: inline-block;
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 0.15rem;
+}
+
+.world-key-visited {
+  background: #1f5fa8;
+}
+
+.world-key-marginal {
+  background: #a6bed6;
+}
+
+.world-key-land {
+  background: #d9d9d4;
+}
+
+:root[data-theme='dark'] .world-key-visited {
+  background: #4d8fd6;
+}
+
+:root[data-theme='dark'] .world-key-marginal {
+  background: #2d4460;
+}
+
+:root[data-theme='dark'] .world-key-land {
+  background: #32323a;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-theme='system'] .world-key-visited {
+    background: #4d8fd6;
+  }
+
+  :root[data-theme='system'] .world-key-marginal {
+    background: #2d4460;
+  }
+
+  :root[data-theme='system'] .world-key-land {
+    background: #32323a;
+  }
+}
+
 /* How much of the country, right-aligned so the column reads as a column. */
 .country-share {
   color: var(--accent);

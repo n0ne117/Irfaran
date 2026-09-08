@@ -7,6 +7,7 @@
 // it against a fingerprint and this asks once, when the tab is opened.
 
 import { apiGet } from './api'
+import { shownUiTheme } from './theme'
 import { element } from './ui'
 
 interface Ground {
@@ -99,11 +100,39 @@ export function formatShare(percent: number): string {
 export class Stats {
   private asked = false
 
-  /** Told which tab is showing; fetches once, the first time it is this one. */
+  /** Told when the page is showing; fetches once, the first time. */
   watch(showing: boolean): void {
-    if (!showing || this.asked) return
+    if (!showing) return
+    // Every time it is opened, because the theme can have changed since the
+    // figures were fetched and the world is drawn in one of two palettes.
+    // Costs nothing when it has not: same URL, and the browser has it.
+    this.paintWorld()
+    if (this.asked) return
     this.asked = true
     void this.load()
+  }
+
+  /**
+   * The little world at the bottom.
+   *
+   * An image the server draws rather than shapes sent here: the polygons are
+   * 548,471 vertices and this is eight kilobytes. The URL carries the theme
+   * because the picture is drawn in it, and the countries because that is what
+   * makes it a different picture - so the browser caches each answer and asks
+   * again only when the answer has moved.
+   */
+  private paintWorld(figures?: Overview): void {
+    const world = element<HTMLImageElement>('stat-world')
+    const theme = shownUiTheme()
+    const next = `/api/stats/world.png?theme=${theme}&width=960`
+    if (!world.src.endsWith(next)) world.src = next
+
+    if (!figures) return
+    const seen = figures.countries.countries.length
+    world.alt = figures.countries.available
+      ? `A world map with ${seen} ${seen === 1 ? 'country' : 'countries'} ` +
+        'marked as visited.'
+      : 'A world map. The country borders are not available.'
   }
 
   wire(): void {
@@ -190,6 +219,7 @@ export class Stats {
   private paint(figures: Overview): void {
     const { ground, routes, marks, time } = figures
     this.paintCountries(figures.countries)
+    this.paintWorld(figures)
 
     element('stat-area').textContent = formatArea(ground.square_km)
     element('stat-share').textContent = formatShare(ground.percent_of_planet)

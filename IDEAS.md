@@ -322,46 +322,6 @@ The interesting figures are the derived ones — total distance, distinct tiles
 visited, days with any data, longest gap, most-visited pin — and they are cheap
 here precisely because the log is append-only.
 
-## A small world map on the statistics page
-
-**Wanted:** a very small world map at the bottom of the statistics page. Every
-country drawn, the visited ones in a colour. The answer to *how much of the
-world* as a picture rather than as thirteen rows and a percentage.
-
-The data is already there — `stats.visited()` returns the codes — and so are
-the polygons, in `countries.bin`. The only real question is how it gets onto
-the screen, and that has been measured rather than guessed:
-
-- **As vector paths in the browser: no.** The polygons are 548,471 vertices
-  unsimplified. Decimated to half a degree — about one pixel on an 800 px
-  world map, so as coarse as it can be without showing — they are still 39,349
-  vertices in 818 rings, which is **346 KB** of SVG path data for a thumbnail.
-- **Rendered on the server: 8 KB.** A 640×320 PNG of all 258 countries with
-  ten filled took **0.24 s** and came out at 8 KB; 960×480 was 13 KB. PIL is
-  already there for the tiles and the country masks, the polygons never leave
-  the server, and it caches against the same fingerprint as the rest of the
-  figures.
-
-So: a small image endpoint beside `/api/stats`, per theme like the tiles are,
-cached with the overview.
-
-**Draw it in Equal Earth.** Not for looks — this is the one picture in Irfaran
-whose whole subject is *how much*, and Mercator is the projection that lies
-about exactly that. Greenland is not the size of Africa on a page that spends
-its time weighting pixels by their real ground area. Nothing stops it: this is
-PIL and a projection formula, not MapLibre, so the thing the Appearance
-setting cannot offer yet is free here.
-
-**Three states, not two.** Visited, marginal (under the 20,000 m² floor) and
-never — because the marginal ones are where an approximate border shows, and a
-picture that quietly promotes them undoes the care the list takes to keep them
-apart.
-
-**Worth knowing before it is built:** at this size a country is coloured the
-same whether it holds 128 km² or the 5,279 m² of two pins on Gran Canaria.
-That is the right answer for "have you been", and it is a different question
-from the one the list underneath it answers.
-
 ## A second workout tracker
 
 The tracker plumbing is behind a registry (`TRACKERS` in
@@ -529,7 +489,7 @@ record of where you have been, at the resolution you were there, and a country
 flooded with colour on the strength of one afternoon is the opposite of that.
 
 The small world map on the statistics page is where the country-level picture
-belongs, and it is on the list above.
+belongs, and it is there as of 0.19.7.
 
 ## Not doing: a polar projection
 
