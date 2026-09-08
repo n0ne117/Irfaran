@@ -1431,3 +1431,48 @@ class TestAnAcceptedTrackAppearsAsItIsDrawn:
         body = self.approved()
         assert "trails.refresh()" in body
         assert "timeline.load()" in body
+
+
+class TestTheWorldSitsAtTheBottom:
+    """It is a footer, not a card among cards.
+
+    It shipped as `span-2`, which is a guess at how many columns there are.
+    There are two at the width the sheet usually opens at and four on a wide
+    screen, where a picture asked for edge to edge covered half a row and sat
+    above sections it was meant to close the page with.
+    """
+
+    def stats_sheet(self) -> str:
+        markup = (WEB / "index.html").read_text()
+        start = markup.index('id="stats-page"')
+        return markup[start : markup.index("</aside>", start)]
+
+    def test_it_is_the_last_section_on_the_page(self) -> None:
+        headings = re.findall(r"<h2>([^<]+)</h2>", self.stats_sheet())
+        assert headings, "no sections found on the statistics page"
+        assert headings[-1] == "The world", (
+            f"the page ends on {headings[-1]!r}; the map is meant to close it"
+        )
+
+    def test_it_spans_the_row_whatever_the_column_count(self) -> None:
+        sheet = self.stats_sheet()
+        world = sheet[sheet.index("<h2>The world</h2>") - 200 : sheet.index("<h2>The world</h2>")]
+        assert 'class="span-all"' in world, "the map spans a fixed column count"
+        css = source("style.css")
+        block = css[css.index(".span-all {") :][:120]
+        assert "grid-column: 1 / -1" in block
+
+    def test_the_picture_is_drawn_wide_enough_to_fill_it(self) -> None:
+        # Full width of the sheet rather than half, so the 960 it started at
+        # was being stretched.
+        text = source("stats.ts")
+        assert "const WORLD_WIDTH = 1440" in text
+        assert "width=${WORLD_WIDTH}" in text
+
+    def test_the_box_it_reserves_matches_what_arrives(self) -> None:
+        # The image is fetched after the page is laid out. Without the right
+        # aspect ratio the section changes height when it lands, which moves
+        # everything above it - and this one is at the bottom of a scroll.
+        css = source("style.css")
+        block = css[css.index(".world-map {") : css.index(".stat-legend {")]
+        assert "aspect-ratio: 1440 / 701" in block

@@ -11,6 +11,13 @@ Entries are written for someone reading the release page, not for someone readin
 
 Nothing yet.
 
+## [0.19.9] - 2026-09-08
+
+### Changed
+- **The world map closes the statistics page, edge to edge.** It shipped as `span-2`, which is a guess at how many columns there are — two at the width the sheet usually opens at, but four on a wide screen, where a picture meant to run the full width covered half a row and sat above sections it was supposed to close the page with. It now spans the whole row whatever the column count, and is the last thing on the page.
+
+  Drawn at 1440 pixels rather than 960, since it is now as wide as the sheet: 23 KB against 12, still a thumbnail beside the 2.26 MB of polygons behind it. Measured at three widths — two columns, four columns and a phone — full width and last in all three, with nothing scrolling sideways.
+
 ## [0.19.8] - 2026-09-08
 
 ### Fixed

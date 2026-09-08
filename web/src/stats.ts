@@ -73,6 +73,15 @@ interface Overview {
 
 const count = (value: number) => value.toLocaleString()
 
+/**
+ * How wide the world is drawn, in pixels.
+ *
+ * It runs the full width of the sheet rather than half of it, so 960 was being
+ * stretched. 1440 covers the widest the sheet gets, and costs 23 KB against 12
+ * - still a thumbnail beside the 2.26 MB of polygons it is made from.
+ */
+const WORLD_WIDTH = 1440
+
 /** Square kilometres, to a sensible number of digits for how big it is. */
 export function formatArea(squareKm: number): string {
   if (squareKm >= 10_000) return `${Math.round(squareKm).toLocaleString()} km²`
@@ -124,7 +133,7 @@ export class Stats {
   private paintWorld(figures?: Overview): void {
     const world = element<HTMLImageElement>('stat-world')
     const theme = shownUiTheme()
-    const next = `/api/stats/world.png?theme=${theme}&width=960`
+    const next = `/api/stats/world.png?theme=${theme}&width=${WORLD_WIDTH}`
     if (!world.src.endsWith(next)) world.src = next
 
     if (!figures) return

@@ -1233,9 +1233,23 @@
             </table>
           </section>
 
-          <section class="span-2">
+          <section>
+            <h2>Time covered</h2>
+            <p class="stat-headline" id="stat-years">—</p>
+            <p class="stat-aside" id="stat-years-count">—</p>
+            <p id="stats-state" class="status-line" hidden></p>
+            <div class="button-row">
+              <button id="stats-refresh" type="button">Recalculate</button>
+            </div>
+            <p class="hint">
+              Worked out once and remembered until the archive changes —
+              measuring the ground reads every fog blob there is.
+            </p>
+          </section>
+
+          <section class="span-all">
             <h2>The world</h2>
-            <img id="stat-world" class="world-map" alt="" width="960" height="467" />
+            <img id="stat-world" class="world-map" alt="" width="1440" height="701" />
             <p class="stat-legend">
               <span class="world-key world-key-visited"></span> visited
               <span class="world-key world-key-marginal"></span> too little to call a visit
@@ -1248,20 +1262,6 @@
               subject is how much — and it is the projection the map itself
               cannot offer yet, because MapLibre has no shader for it and this
               is a picture the server draws.
-            </p>
-          </section>
-
-          <section>
-            <h2>Time covered</h2>
-            <p class="stat-headline" id="stat-years">—</p>
-            <p class="stat-aside" id="stat-years-count">—</p>
-            <p id="stats-state" class="status-line" hidden></p>
-            <div class="button-row">
-              <button id="stats-refresh" type="button">Recalculate</button>
-            </div>
-            <p class="hint">
-              Worked out once and remembered until the archive changes —
-              measuring the ground reads every fog blob there is.
             </p>
           </section>
         </div>
