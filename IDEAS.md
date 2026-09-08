@@ -402,6 +402,163 @@ path and could live in the CLI beside `token`. It also doubles as the only
 honest load-test fixture for the render queue, since the shape of real
 movement is what makes a render expensive.
 
+## Multi-user: a family on one instance
+
+**Wanted:** a household on one Irfaran. Members are created by an admin, each
+gets their own token, and each uploads their own trips and tracks with it.
+Single-user or multi-user is asked at setup and can be changed afterwards, with
+the existing single user becoming the admin who can create members and issue
+tokens. On the map, a control for whose ground to show: your own, everybody's,
+or a chosen few.
+
+The largest thing on this list. It is written up in some detail because the
+expensive parts are not the obvious ones.
+
+### What this is, and what it is not
+
+**It is attribution and filtering. It is not access control.** Every member
+would be able to see every other member's ground; the switch decides what is
+*drawn*, not what is *permitted*. That is almost certainly what a family wants,
+and it is the difference between a fortnight and a rewrite.
+
+Read isolation - a member whose ground the others genuinely cannot see - is a
+different feature and a much larger one. Reading is open by design: the map
+needs no token, and tiles are static PNGs served from a path
+(`/api/tiles/{theme}/{view}/{kind}/{z}/{x}/{y}.png`). Per-member fog would put
+the member in that path, and anyone could then read anyone's by typing it. Real
+isolation means authorising every tile read, which is the one request Irfaran
+serves in bulk and the one it deliberately made as cheap as a file read.
+
+It is also **not accounts**. No passwords, no sessions, no login screen. A
+token is the credential, as it is today. Passwords bring session management,
+resets, lockout and a login page to a self-hosted family instance that is
+already behind whatever the household is behind.
+
+### Why the shape of the archive makes this feasible
+
+Three facts, all in the code today:
+
+- **Blobs are already partitioned by source.** The primary key is
+  `(kind, source, layer, x, y)` and `composite_tile` unions across every source
+  for the layers a view asks for. Filtering by member is a `WHERE` clause in
+  `_blobs`, once the blobs know who they belong to.
+- **The event log is the truth and a rebuild is byte-identical.** Adding
+  attribution to derived state does not need a migration that is clever - it
+  needs a column and a rebuild. That is invariant 1 being useful rather than
+  merely virtuous.
+- **Writes already go through one gate.** One middleware checks one header on
+  every `POST`, `PATCH`, `PUT` and `DELETE`. Turning "is this token right" into
+  "which member is this" is a change in one function.
+
+### Identity
+
+Two tables and one habit change.
+
+- `users(id, name, role, created_at, active)` where role is `admin | member`.
+- `tokens(hash, user_id, label, created_at, last_used_at, revoked_at)`.
+
+**Store a hash, not the token.** Today's single token sits in plain text in
+`settings.api_token`, which is defensible for one shared secret that the setup
+screen has to be able to show once. It stops being defensible at four: an admin
+who can read back a member's token can post as them, and "issued once, shown
+once, revoked and reissued if lost" is both safer and simpler to explain.
+Comparison stays `secrets.compare_digest`, over the hash.
+
+`IRFARAN_TOKEN` keeps working and becomes the admin's - it is the bootstrap
+credential and the way back in when a database is moved to a new machine.
+
+### Attribution on the way in
+
+`events` gains `user_id`, null meaning *before there were users*. Every ingest
+path stamps the authenticated member. Then the blobs need it too, or the fog
+cannot be filtered: either widen `blobs.source` to carry it (`overland:3`) or
+add a column and change the primary key. The second is cleaner and costs a
+rebuild, which is exactly the operation this architecture guarantees.
+
+**The trap, and it is a bad one:** the dedup index is
+`UNIQUE(source, external_id)`. Two members who walked the same route together
+and both import the GPX would have the second import silently swallowed as a
+duplicate of the first. Dedup has to become per-member. The same applies to
+live day keys - `track_id()` builds `live-{day}`, which two phones posting on
+the same day would collide on - and to the holding pen, whose open-batch
+lookup is `(source, day)`.
+
+### The pyramid is what multiplies
+
+Here are the numbers. The rendered tiles today are **1.2 GB in 276,896 PNGs**,
+for 2 themes across 19 views (all, prehistory and 17 years). Per-member fog
+multiplies that by members plus one: a family of four is roughly **6 GB and 1.4
+million files**, and every render pass grows the same way.
+
+And a *multiple choice* list is worse than linear. Arbitrary subsets of N
+members is 2^N view sets. Pre-rendering that is out for any N worth having.
+
+**The way out is to notice that fog and tracks are different questions.**
+
+> Fog is collective. It is where *this household* has been, and it is the
+> thing a family map is for. Tracks are individual: whose route that is, and
+> when.
+
+So: **one shared fog pyramid, and a trail pyramid per member**, drawn as
+separate raster layers the browser can switch on and off. That makes the
+control free - it is layer visibility, no render and no request - and it makes
+the multiple-choice list free too, which is the version of the switch that
+would otherwise have been impossible. It also suggests giving each member a
+colour, which answers *whose track is that* at a glance and sidesteps a real
+problem: the trail ramp encodes how many times a pixel was crossed, and
+stacking two ramps does not sum. A colour per member says something true; a
+stack of ember ramps says something false.
+
+"Show me only the fog **I** cleared" is then the one question this does not
+answer, and it is the rarer one. Render it on demand when a member asks for it,
+cache it, and let it fall out of cache. Bounded by what is actually used
+instead of by what is possible.
+
+### Everywhere else identity leaks in
+
+- **The holding pen.** Batches belong to a member; the badge counts what is
+  waiting for *you*. An admin reviewing everybody's is a decision, not an
+  obligation.
+- **Live sources.** Each phone posts with its owner's token, which is the whole
+  mechanism - Overland needs no change beyond the token in its settings.
+- **Workout trackers.** The intervals.icu key is a single row in `settings`
+  and would become per-member, which also means per-member sync state.
+- **Pins are shared, and `people` is not `users`.** The `people` table records
+  who was *there* - which includes people who have never touched Irfaran, and
+  should keep doing so. A member might *link* to a person. Merging the two
+  concepts would be the easy mistake and would take a grandmother who does not
+  own a phone out of the record.
+- **History** already records what happened; it would record who.
+- **Export and backup** start carrying members, so an export from a
+  multi-user instance restored onto a single-user one needs a defined answer
+  rather than whatever falls out.
+
+### Turning it on, and off
+
+**On** is clean: there is exactly one candidate for who owns everything already
+there. The existing user becomes admin and every existing event is theirs -
+one `UPDATE`, no ambiguity.
+
+**Off** is the interesting direction, and the honest answer is to refuse it
+while other members have data. Anything else is a question with no good answer:
+whose is that track now?
+
+### If it is built, build it in this order
+
+Each of these is shippable on its own and reversible.
+
+1. **Users, tokens, attribution.** Members exist, tokens work, `user_id` is
+   recorded on every event - and nothing filters yet. The map renders exactly
+   as it does now, which is what makes this phase safe.
+2. **The setup question and the admin page.** Create members, issue a token
+   once, revoke one. Switch the mode.
+3. **Per-member trail layers and the control.** The visible feature, and the
+   first phase anybody would notice.
+4. **Per-member fog, on demand.** Only if somebody actually asks for it.
+
+Phase 1 is the one that touches everything: every ingest path, the dedup keys,
+the holding pen, the blob key, and a rebuild. Nothing after it is difficult.
+
 ## A written spec for the event log
 
 Not a feature. The event log is already a complete, portable, readable account
