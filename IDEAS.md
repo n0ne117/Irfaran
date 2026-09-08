@@ -559,6 +559,150 @@ Each of these is shippable on its own and reversible.
 Phase 1 is the one that touches everything: every ingest path, the dedup keys,
 the holding pen, the blob key, and a rebuild. Nothing after it is difficult.
 
+## Trips and vacations
+
+**Wanted:** a log of trips, off by default and switched on in settings. A trip
+gathers tracks and pins into one thing, with a title, dates, written notes with
+some formatting, and photos. Its own icon on the map tools - a book rather than
+another pin - and its own page, because it is only half a map feature.
+
+**Off by default is part of the design, not politeness.** This is the first
+thing that would give Irfaran a second kind of storage - photos are files, not
+rows and not tiles - and an instance that does not want trips should pay
+nothing for them: no icon, no tables touched, no directory made.
+
+### What a trip is made of
+
+`trips(id, name, started_on, ended_on, notes, created_at)` with join tables to
+events and places, both ordered, since a trip has a shape: the flight out, four
+walks, the drive home.
+
+**Assembling one by date mostly works already.** `_meta_for` in
+`ingest/common.py` writes `started_at` into `events.meta` whenever the source
+carried timestamps, so "everything between 3 and 17 August" is a
+`json_extract(meta, '$.started_at')` away over a table with a few thousand rows
+in it. Pins have `date_from` and `date_to` already. What has no real date is a
+hand-drawn stroke - it has an ingest time and a year - so those get added by
+hand. Worth knowing before designing a date picker that promises more than it
+can find.
+
+**A trip is not a folder, and the overlap should be resisted.** Folders nest
+and hide; a trip is dated and narrated. What a trip might reasonably offer is
+*make a folder of these pins*.
+
+### Formatting without a dependency
+
+Store the text somebody typed, render it at display time, and support a small
+subset - paragraphs, bold, italic, links, bullet lists. Rendered into DOM
+nodes, never through `innerHTML`: the notes are the first free text in Irfaran
+that gets displayed back, and an archive that renders arbitrary HTML is an
+archive that can be made to do something else. A markdown library is a
+dependency for the sake of syntax nobody asked for, in a project that
+hand-wrote its own MVT and PMTiles readers and drew its own icons.
+
+### Photos are the real decision
+
+There are two entirely different answers, and choosing between them is most of
+the design:
+
+- **Files of its own.** A directory under the data dir, a row pointing at each
+  file, thumbnails made with PIL, which is already here. This adds a storage
+  class - and with it a question the backup has no answer for: the export is
+  one file that means *everything worth keeping*, and photos would make it
+  enormous. Something has to be decided rather than fallen into: excluded with
+  the references kept, a separate photo archive, or an export that warns.
+- **Somebody else's, by reference.** See the Immich entry below. Nothing is
+  copied, nothing is stored, and the backup question never comes up.
+
+Photos would also be the most sensitive thing Irfaran holds by a distance. The
+repository is public and the rule about fixtures applies twice over: generated
+images only, never a real one.
+
+## Immich
+
+**Wanted:** talk to a self-hosted [Immich](https://immich.app). Mainly to give
+trips their photos, and beyond that to read the GPS in a library and offer pins
+from it - compared against the pins already on the map, always as a suggestion,
+and with every answer remembered so a rejected one never comes back.
+
+It fits the one rule this project does not bend: Immich is self-hosted, so
+nothing leaves the house. An API key in `SECRET_SETTINGS` beside
+`intervals_api_key`, and the same shape as the tracker registry.
+
+### Photos by reference
+
+Store the Immich asset id and nothing else. Thumbnails are proxied through
+Irfaran so the key never reaches the browser and the browser never needs to
+reach Immich. That answers the storage question in the entry above by not
+having it: no files, no directory, no backup problem, and the photos stay in
+the application built to look after photos.
+
+### Suggested pins, and remembering the answer
+
+**The pattern already exists.** The one-off pin importer built exactly this in
+0.18.5: rows staged in a table of their own, each one reviewed, saved or
+discarded, and nothing touching the map until it is decided. A suggestion table
+keyed by Immich asset id with `suggested | approved | rejected` is that again,
+with two differences - it is not one-off, and *rejected* has to be permanent,
+which is the ask.
+
+Comparing against what is already there is a proximity test the pin importer
+also already does when it collapses near-duplicates, so the threshold is
+already a decided number rather than a new argument.
+
+**Two things to get right before writing any of it:**
+
+- **Never write a pin by itself.** The ask says manual and so does the rest of
+  the application - the holding pen exists because nothing automatic should
+  reach the map unlooked-at. A photo library would be the largest source of
+  suggestions Irfaran has ever had, which makes the gate matter more, not less.
+- **Sync incrementally and yield.** A library is tens of thousands of assets
+  and only some carry GPS. Pull by `updatedAt` since the last run, and obey the
+  rule already written down for the gazetteer: manual work wins, the background
+  job pauses.
+
+## A view for mobile devices
+
+**Wanted:** it was out of scope and it is being used on a phone anyway.
+
+**Some of it is already there.** There is a 46rem breakpoint: the sheets go
+from a comfortable inset to nearly full screen, the two-column sections
+collapse to one, and the scale bar takes itself away because the time bar and
+the attribution already share that edge. The statistics page was measured at
+375 px while it was being built - one column, nothing scrolling sideways.
+
+**What is genuinely hard, in the order it will hurt:**
+
+- **Drawing with a finger.** One-finger drag is how the map pans, and it is
+  also how a stroke would be drawn. MapLibre's `dragPan` has to yield while a
+  tool is armed and take the gesture back when it is put away, with two-finger
+  pan and pinch still working throughout. This is the one that needs designing
+  rather than adjusting.
+- **The settings sheet.** Thirteen tabs in a horizontal scrolling strip is a
+  filing cabinet through a letterbox. An accordion, or a two-level page that
+  opens one section at a time.
+- **The review sidebar.** Two trim handles over a fix list, and a gap list
+  beside a map - the densest screen in the application, and the one most likely
+  to be wanted on a phone, since reviewing yesterday's tracking is a thing
+  somebody does on a sofa.
+- **The time bar.** Nineteen stops across 375 pixels, which is the same
+  question as the 2052 ruler and should be answered once for both.
+- **iOS.** `100vh` against a disappearing address bar, and safe-area insets
+  under the notch, both of which affect a full-screen map more than they affect
+  a page.
+
+**Cheap things worth doing first,** none of which need any of the above: a web
+app manifest so it can be added to the home screen and open without browser
+chrome, a `theme-color` that follows the interface theme, larger touch targets
+on the map tools, and sheets that go properly full screen rather than nearly.
+
+**And one thing to measure rather than assume:** the globe on a phone GPU.
+
+**How to build it.** Not as one release. This is a pass over every panel, and
+the honest order is what a phone is actually used for: looking first - the map,
+the time bar, the pins - then reviewing, then the panels nobody edits on a
+train. One panel per release, each shippable, none of them blocking the next.
+
 ## A written spec for the event log
 
 Not a feature. The event log is already a complete, portable, readable account
