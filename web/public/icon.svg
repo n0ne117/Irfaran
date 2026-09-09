@@ -1,0 +1,18 @@
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<!-- The home screen icon: cleared ground inside fog. Drawn rather than
+     exported, so it is one file with no build step and no binary in the
+     repository. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <rect width="512" height="512" rx="112" fill="#121214"/>
+  <!-- The fog: a wash over everything. -->
+  <rect x="56" y="56" width="400" height="400" rx="72" fill="#5e5c64" opacity="0.55"/>
+  <!-- A track through it, cleared to the ground underneath. -->
+  <mask id="cleared">
+    <rect x="56" y="56" width="400" height="400" rx="72" fill="#fff"/>
+    <path d="M132 372c40-18 44-72 84-96s96 12 128-24 24-84 44-100"
+          stroke="#000" stroke-width="72" stroke-linecap="round" fill="none"/>
+  </mask>
+  <rect x="56" y="56" width="400" height="400" rx="72" fill="#5e5c64" opacity="0.55" mask="url(#cleared)"/>
+  <path d="M132 372c40-18 44-72 84-96s96 12 128-24 24-84 44-100"
+        stroke="#d8a13a" stroke-width="26" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+</svg>

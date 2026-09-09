@@ -2551,3 +2551,263 @@ body[data-token='missing'] #review-badge {
   font-variant-numeric: tabular-nums;
   text-align: right;
 }
+
+/* ================================================================= a phone
+
+   Everything below is inside one media query, and nothing above it was
+   touched. That is deliberate and worth keeping: the desktop layout is the
+   one that has been used and adjusted for twenty releases, and a phone is a
+   different shape rather than a smaller version of it.
+
+   46rem is the breakpoint the sheets already used. What is here:
+
+   - fingers, not pointers. A 36px button is comfortable with a mouse and a
+     guess with a thumb, so everything tappable goes to 44px, which is the
+     size both platform guidelines settle on.
+   - the safe area. `viewport-fit=cover` in the head puts the map under the
+     notch and the home indicator, which is where a map wants to be; every
+     piece of chrome then pads itself back out of them.
+   - the bottom edge, which is where a phone runs out of room. Four things
+     want it: the attribution, the time bar, the review badge and the
+     notices. They are stacked in that order rather than left to overlap,
+     which they did - the attribution sat on top of the time bar.
+   - panels go properly full screen. A margin of map around a sheet is
+     useful on a desktop, where a fog slider can be seen taking effect
+     behind it. On a phone it is 6% of a screen that has none to give.  */
+
+@media (max-width: 46rem) {
+  :root {
+    /* Zero everywhere that has no notch, including every desktop browser
+       narrowed to this width. */
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-right: env(safe-area-inset-right, 0px);
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+    --safe-left: env(safe-area-inset-left, 0px);
+    /* The bottom stack, measured from the bottom edge up. Both are what the
+       thing actually occupies at this width, measured in a browser rather
+       than guessed - the first guesses were 1.6rem and 5.9rem, and the
+       attribution sat on the time bar in the gap between guess and fact. */
+    --attrib-room: 2.9rem;
+    --timeline-height: 5.9rem;
+    /* Everything that has to clear the time bar starts here. */
+    --above-timeline: calc(
+      var(--attrib-room) + var(--timeline-height) + 0.6rem + var(--safe-bottom)
+    );
+  }
+
+  /* -- fingers ------------------------------------------------------- */
+
+  .icon-button {
+    width: 2.75rem;
+    height: 2.75rem;
+    font-size: 1.15rem;
+  }
+
+  .zoom-control button,
+  .timeline button {
+    width: 2.75rem;
+    height: 2.75rem;
+    font-size: 1.15rem;
+  }
+
+  /* A thumb cannot hit a 4px track. */
+  .timeline-slider,
+  .wide-slider,
+  input[type='range'] {
+    height: 2.25rem;
+  }
+
+  /* The chrome is not text. Long-pressing a button should not offer to copy
+     its label, and a drag that starts on one should not select anything. */
+  .top-left,
+  .map-tools,
+  .zoom-control,
+  .timeline,
+  .review-badge,
+  .notices {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  /* -- the corners --------------------------------------------------- */
+
+  .top-left {
+    top: calc(0.6rem + var(--safe-top));
+    left: calc(0.6rem + var(--safe-left));
+  }
+
+  /* Opening the search bar used to push the row wider than the screen.
+     Full width, under the buttons, with the buttons left where they were. */
+  .search-bar {
+    position: fixed;
+    top: calc(4.1rem + var(--safe-top));
+    left: calc(0.6rem + var(--safe-left));
+    right: calc(0.6rem + var(--safe-right));
+    max-width: none;
+  }
+
+  .search-bar input {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-size: 1rem; /* 16px: anything smaller and iOS zooms the page in. */
+  }
+
+  /* The drawing toolbar hung 54px off the left edge of a 375px screen,
+     because it sits in the same row as five buttons that are 44px each now.
+     It gets its own line underneath them instead. */
+  .map-tools {
+    top: calc(0.6rem + var(--safe-top));
+    right: calc(0.6rem + var(--safe-right));
+    left: calc(0.6rem + var(--safe-left));
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    /* The row now spans the width, so its empty half sits over the Settings
+       and Search buttons in the other corner. Without this it swallows every
+       tap meant for them - invisibly, because there is nothing to see. */
+    pointer-events: none;
+  }
+
+  .map-tools > * {
+    pointer-events: auto;
+  }
+
+  /* Ordered after the buttons and given a whole line, so the buttons stay in
+     a row and the toolbar drops underneath them instead of pushing the row
+     54px off the left edge of the screen, which is where it was. */
+  .draw-stack {
+    order: 1;
+    flex: 1 0 100%;
+    align-items: stretch;
+  }
+
+  .draw-tools {
+    max-width: none;
+    justify-content: flex-start;
+  }
+
+  .bar-hint {
+    text-align: right;
+  }
+
+  /* Pinch is how a phone zooms, so the 9rem slider is 9rem of map nobody
+     needed. The two buttons stay: they are the only way to zoom by exactly
+     one level, which is what the trail layer's z14 threshold cares about. */
+  .zoom-slider,
+  .zoom-label {
+    display: none;
+  }
+
+  .zoom-control {
+    top: auto;
+    bottom: var(--above-timeline);
+    left: calc(0.6rem + var(--safe-left));
+    transform: none;
+    padding: 0.3rem;
+    border-radius: 1.6rem;
+  }
+
+  /* -- the bottom edge ------------------------------------------------ */
+
+  .timeline {
+    left: calc(0.6rem + var(--safe-left));
+    right: calc(0.6rem + var(--safe-right));
+    bottom: calc(var(--attrib-room) + var(--safe-bottom));
+    width: auto;
+    transform: none;
+  }
+
+  .review-badge {
+    left: auto;
+    right: calc(0.6rem + var(--safe-right));
+    bottom: var(--above-timeline);
+  }
+
+  .notices {
+    left: calc(0.6rem + var(--safe-left));
+    right: calc(0.6rem + var(--safe-right));
+    bottom: calc(var(--above-timeline) + 3.4rem);
+    transform: none;
+  }
+
+  /* Hidden rather than stacked into an edge that has four things on it
+     already. The same version is in Settings, About, with the release notes
+     link beside it. */
+  .version-corner {
+    display: none;
+  }
+
+  #map .maplibregl-ctrl-bottom-right,
+  #map .maplibregl-ctrl-bottom-left {
+    margin-bottom: var(--safe-bottom);
+  }
+
+  /* -- panels --------------------------------------------------------- */
+
+  .sheet {
+    inset: 0;
+    border: 0;
+    border-radius: 0;
+  }
+
+  .sidebar {
+    width: 100%;
+    border-left: 0;
+  }
+
+  .sheet-head,
+  .sidebar-head {
+    padding-top: calc(0.9rem + var(--safe-top));
+  }
+
+  .sheet-body,
+  .sidebar-body {
+    padding-right: calc(1rem + var(--safe-right));
+    padding-bottom: calc(2rem + var(--safe-bottom));
+    padding-left: calc(1rem + var(--safe-left));
+  }
+
+  /* Controls inside a panel. Not the 44px of the map chrome - these are
+     labelled rows in a list rather than icons floating over a map, and a
+     settings page of 44px everything is a settings page you scroll for a
+     minute - but 30px was a mouse target that had never been sat with on a
+     train. Checkboxes keep their own size: they are the one control whose
+     box is the graphic. */
+  .sheet :is(button, select, input:not([type='checkbox']):not([type='range'])),
+  .sidebar :is(button, select, input:not([type='checkbox']):not([type='range'])) {
+    min-height: 2.5rem;
+  }
+
+  .sheet .icon-button,
+  .sidebar .icon-button {
+    min-height: 2.75rem;
+  }
+
+  /* Thirteen tabs in a horizontal scroller is a filing cabinet through a
+     letterbox: you cannot see what you are looking for, so you swipe until
+     it appears. Wrapped, every tab is visible at once - which costs three
+     short rows, and the sheet went full screen above and can afford them. */
+  .tabs {
+    flex-wrap: wrap;
+    gap: 0.3rem;
+    padding: 0.5rem calc(1rem + var(--safe-right)) 0.5rem
+      calc(1rem + var(--safe-left));
+    overflow-x: visible;
+  }
+
+  .tabs button {
+    min-height: 2.75rem;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--line);
+    border-bottom-width: 1px;
+    border-radius: 1.4rem;
+    font-size: 0.75rem;
+  }
+
+  .tabs button[aria-selected='true'] {
+    border-color: var(--accent);
+    background: var(--accent);
+    color: var(--accent-fg);
+  }
+}

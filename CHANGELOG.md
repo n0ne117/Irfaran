@@ -11,6 +11,25 @@ Entries are written for someone reading the release page, not for someone readin
 
 Nothing yet.
 
+## [0.19.10] - 2026-09-08
+
+### Added
+- **A phone layout.** Everything is inside one media query at the breakpoint the sheets already used, and the desktop layout is untouched — measured rather than asserted: 289 elements captured at 1280×800 before and after, **zero differences**.
+
+  - **Fingers rather than pointers.** Every control on the map goes to 44 px; controls inside a panel to 40, because a settings page of 44 px everything is a settings page you scroll for a minute. Checkboxes keep their own size — the box is the graphic. The search field is 16 px, below which Safari zooms the whole page in.
+  - **The safe area.** `viewport-fit=cover` puts the map under the notch and the home indicator, where a map wants to be, and every piece of chrome pads itself back out with `env(safe-area-inset-*)`.
+  - **The bottom edge, stacked instead of overlapping.** Four things want it — the attribution, the time bar, the review badge and the notices — and the attribution was sitting on top of the time bar. They are now measured off one variable, in that order.
+  - **Panels go properly full screen.** A margin of map around a sheet is useful on a desktop, where a change can be seen taking effect behind it; on a phone it is 6% of a screen with none to spare.
+  - **The settings tabs wrap.** Thirteen tabs in a horizontal scroller is a filing cabinet through a letterbox — you cannot see what you are looking for, so you swipe until it appears. Wrapped, all thirteen are visible at once, which costs four short rows that the full-screen sheet can now afford.
+  - **Add to home screen.** A web app manifest, an icon drawn as SVG rather than committed as a binary, and a `theme-color` for each theme so the status bar matches the interface instead of fighting it.
+
+### Fixed
+- **The drawing toolbar hung 54 px off the left edge of a 375 px screen**, because it shares a row with five buttons that are now 44 px each. It takes a line of its own underneath them. The row spans the width to do that, so it is also made click-through except on its buttons — otherwise its empty half silently swallowed every tap meant for Settings and Search.
+- **The zoom slider is gone on a phone** and the two buttons stay. Pinch is how a phone zooms; a 9 rem slider down the left edge was 9 rem of map nobody could see. The buttons remain because they are the only way to move exactly one zoom level, which is what the trail layer's z14 threshold cares about.
+
+### Note
+**Drawing with a finger already worked**, which was the one thing this was expected to need. `Draw` binds *pointer* events rather than mouse events and disables `dragPan` on pointerdown — and for touch, `pointerdown` fires before `touchstart`, so MapLibre's pan handler is switched off before it ever sees the gesture. Measured on a synthetic finger: seven points collected, the map did not move, panning restored afterwards, one event written. Designed for a mouse, correct for a thumb by accident.
+
 ## [0.19.9] - 2026-09-08
 
 ### Changed

@@ -1,0 +1,19 @@
+{
+  "name": "Irfaran",
+  "short_name": "Irfaran",
+  "description": "A self-hosted fog-of-war map of everywhere you have been.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#121214",
+  "theme_color": "#121214",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

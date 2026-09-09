@@ -36,6 +36,10 @@ COPY api/tests ./tests
 # checks element() never asks for an id index.html does not have.
 COPY web/index.html ./web/index.html
 COPY web/src ./web/src
+# The manifest and the home-screen icon, which are read the same way: vite
+# copies public/ into the build verbatim, so a file in the wrong place is a
+# 404 nobody sees until a phone tries to install the thing.
+COPY web/public ./web/public
 # The release guard and the changelog it checks, so CI's gate is itself tested.
 COPY scripts ./scripts
 COPY CHANGELOG.md ./CHANGELOG.md

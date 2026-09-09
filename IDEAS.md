@@ -661,47 +661,39 @@ already a decided number rather than a new argument.
   rule already written down for the gazetteer: manual work wins, the background
   job pauses.
 
-## A view for mobile devices
+## A phone, the rest of it
 
-**Wanted:** it was out of scope and it is being used on a phone anyway.
+The first pass shipped in 0.19.10: touch targets, the safe area, the bottom
+edge stacked instead of overlapping, full-screen panels, wrapped tabs, and a
+manifest so it can be added to the home screen. What is left is the part that
+needs designing rather than adjusting.
 
-**Some of it is already there.** There is a 46rem breakpoint: the sheets go
-from a comfortable inset to nearly full screen, the two-column sections
-collapse to one, and the scale bar takes itself away because the time bar and
-the attribution already share that edge. The statistics page was measured at
-375 px while it was being built - one column, nothing scrolling sideways.
+**One finding from that pass worth keeping.** Drawing with a finger was the
+thing this list called the hard part, and it already worked. `Draw` binds
+**pointer** events rather than mouse events, and disables `dragPan` on
+pointerdown - and for touch input `pointerdown` fires *before* `touchstart`, so
+MapLibre's own pan handler is switched off before it ever sees the gesture.
+Measured on a synthetic finger: seven points collected, the map did not move,
+`dragPan` back on afterwards, one event written. It was designed for a mouse
+and came out right for a thumb by accident, which is worth knowing before
+anybody "fixes" it.
 
-**What is genuinely hard, in the order it will hurt:**
+Still open:
 
-- **Drawing with a finger.** One-finger drag is how the map pans, and it is
-  also how a stroke would be drawn. MapLibre's `dragPan` has to yield while a
-  tool is armed and take the gesture back when it is put away, with two-finger
-  pan and pinch still working throughout. This is the one that needs designing
-  rather than adjusting.
-- **The settings sheet.** Thirteen tabs in a horizontal scrolling strip is a
-  filing cabinet through a letterbox. An accordion, or a two-level page that
-  opens one section at a time.
 - **The review sidebar.** Two trim handles over a fix list, and a gap list
-  beside a map - the densest screen in the application, and the one most likely
-  to be wanted on a phone, since reviewing yesterday's tracking is a thing
-  somebody does on a sofa.
-- **The time bar.** Nineteen stops across 375 pixels, which is the same
-  question as the 2052 ruler and should be answered once for both.
-- **iOS.** `100vh` against a disappearing address bar, and safe-area insets
-  under the notch, both of which affect a full-screen map more than they affect
-  a page.
-
-**Cheap things worth doing first,** none of which need any of the above: a web
-app manifest so it can be added to the home screen and open without browser
-chrome, a `theme-color` that follows the interface theme, larger touch targets
-on the map tools, and sheets that go properly full screen rather than nearly.
-
-**And one thing to measure rather than assume:** the globe on a phone GPU.
-
-**How to build it.** Not as one release. This is a pass over every panel, and
-the honest order is what a phone is actually used for: looking first - the map,
-the time bar, the pins - then reviewing, then the panels nobody edits on a
-train. One panel per release, each shippable, none of them blocking the next.
+  beside a map: the densest screen in the application, and the one most likely
+  to be wanted on a phone, since reviewing yesterday's tracking is a sofa job.
+  It is full width now and no better arranged for it.
+- **The time bar with many years.** Nineteen stops across 360 pixels, which is
+  the same question as the 2052 ruler and should be answered once for both.
+- **Editing a pin.** The popup editor is a desktop form in a bubble over the
+  map. On a phone it wants to be a sheet from the bottom.
+- **A tablet is not a big phone.** 46rem sends a tablet to the desktop layout,
+  which is right for a landscape iPad and arguable in portrait. Nobody has
+  complained, so nobody has measured.
+- **Offline.** The manifest makes it installable, not offline. A service
+  worker that cached the shell would be a small change; one that cached tiles
+  is a whole feature, and would need an answer for how it goes stale.
 
 ## A written spec for the event log
 
