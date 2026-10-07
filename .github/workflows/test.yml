@@ -1,0 +1,56 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# Tests a commit before it is a release. release.yml runs the same suite, but
+# only once a tag is pushed - and the machine changes are made on has no
+# Docker, so without this the first test run of any change would come after
+# its version number was already public.
+#
+# Publishes nothing. Start one by hand with `gh workflow run test.yml --ref <branch>`.
+
+name: Test
+
+on:
+  push:
+    branches:
+      - '**'
+    # Only what reaches the test image or the web build. IDEAS.md, README.md
+    # and the docs/ site change nothing either of them sees.
+    paths:
+      - 'api/**'
+      - 'web/**'
+      - 'scripts/**'
+      - 'CHANGELOG.md'
+      - 'VERSION'
+      - 'docker-compose.yml'
+      - '.github/workflows/test.yml'
+  workflow_dispatch:
+
+# A newer push to the same branch makes the older run's answer irrelevant.
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test suite
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run the test suite
+        run: docker compose run --rm --build test
+
+  # The test image reads the TypeScript but never compiles it; `tsc --noEmit`
+  # only runs inside the web image build, which release.yml reaches after the
+  # tests have already passed.
+  web:
+    name: Web build and type check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build the web image
+        run: docker compose build web
