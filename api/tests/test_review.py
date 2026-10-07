@@ -1070,3 +1070,108 @@ class TestLeavingPointsOut:
         edited = client.patch(f"/api/review/{held}", headers=auth(), json={"removed": [3]})
         assert edited.status_code == 200, edited.text
         assert edited.json()["keeping"] == 11
+
+
+class TestMovingAPoint:
+    """A point dragged somewhere else by hand.
+
+    The phone's point is never rewritten. It leaves the phone's track, the
+    track breaks around it, and accepting writes a hand-drawn line from the
+    point before, through where it was put, to the point after.
+    """
+
+    @pytest.fixture
+    def held(self, conn) -> int:
+        review.hold_fixes(conn, "overland", fixes(40))
+        return int(review.overview(conn)["items"][0]["id"])
+
+    def place(self, index: int) -> list:
+        return [index, LON + index * STEP, LAT + 0.002]
+
+    def test_a_move_is_kept_with_the_batch(self, conn, held) -> None:
+        detail = review.edit(conn, held, moved=[self.place(20)])
+        assert detail["edits"]["moved"] == [self.place(20)]
+        assert detail["keeping"] == 39
+
+    def test_the_stored_batch_is_not_touched(self, conn, held) -> None:
+        stored = "SELECT fixes FROM review WHERE id = ?"
+        before = conn.execute(stored, (held,)).fetchone()[0]
+        review.edit(conn, held, moved=[self.place(20)])
+        assert conn.execute(stored, (held,)).fetchone()[0] == before
+
+    def test_it_lands_as_a_line_through_the_new_place(self, conn, held) -> None:
+        review.edit(conn, held, moved=[self.place(20)])
+        decision = review.approve(conn, held)
+        assert decision.moved == 1
+        assert "1 moved" in decision.summary()
+
+        row = conn.execute(
+            "SELECT geometry, radius_m, layers FROM events WHERE source = 'manual'"
+        ).fetchone()
+        line = json.loads(row["geometry"])["coordinates"]
+        moved = self.place(20)
+        assert line == [
+            [LON + 19 * STEP, LAT],
+            [moved[1], moved[2]],
+            [LON + 21 * STEP, LAT],
+        ]
+        assert row["radius_m"] == common.RADIUS_DEFAULTS_M["overland"]
+        assert json.loads(row["layers"]) == ["2026"]
+
+    def test_the_phones_track_breaks_around_it(self, conn, held) -> None:
+        # A spike taken out closes up; a moved point must not, or the old
+        # straight line would sit beside the new bend.
+        review.edit(conn, held, moved=[self.place(20)])
+        assert review.approve(conn, held).stretches == 2
+
+    def test_neighbours_moved_together_are_one_bend(self, conn, held) -> None:
+        review.edit(conn, held, moved=[self.place(20), self.place(21)])
+        review.approve(conn, held)
+        rows = conn.execute(
+            "SELECT geometry FROM events WHERE source = 'manual'"
+        ).fetchall()
+        assert len(rows) == 1
+        assert len(json.loads(rows[0]["geometry"])["coordinates"]) == 4
+
+    def test_a_removed_neighbour_is_not_reached_for(self, conn, held) -> None:
+        review.edit(conn, held, moved=[self.place(20)], removed=[21])
+        review.approve(conn, held)
+        row = conn.execute(
+            "SELECT geometry FROM events WHERE source = 'manual'"
+        ).fetchone()
+        assert len(json.loads(row["geometry"])["coordinates"]) == 2
+
+    def test_a_move_inside_a_trim_is_ignored(self, conn, held) -> None:
+        review.edit(conn, held, begin=10, moved=[self.place(5)])
+        assert review.approve(conn, held).moved == 0
+        assert conn.execute(
+            "SELECT count(*) FROM events WHERE source = 'manual'"
+        ).fetchone()[0] == 0
+
+    def test_moving_twice_keeps_the_last_place(self, conn, held) -> None:
+        later = [20, LON, LAT + 0.004]
+        detail = review.edit(conn, held, moved=[self.place(20), later])
+        assert detail["edits"]["moved"] == [later]
+
+    def test_reset_puts_it_back(self, conn, held) -> None:
+        review.edit(conn, held, moved=[self.place(20)])
+        assert review.reset(conn, held)["edits"]["moved"] == []
+
+    @pytest.mark.parametrize(
+        "bad, message",
+        [([40, LON, LAT], "40 points"), ([3, 200.0, 0.0], "off the planet"), ([3], "point number")],
+    )
+    def test_a_move_that_is_not_one_is_refused(self, conn, held, bad, message) -> None:
+        with pytest.raises(review.ReviewError, match=message):
+            review.edit(conn, held, moved=[bad])
+
+    def test_the_endpoint_takes_them(self, client) -> None:
+        enable(client, "overland")
+        post(client, 12)
+        held = client.get("/api/review").json()["items"][0]["id"]
+        edited = client.patch(
+            f"/api/review/{held}", headers=auth(), json={"moved": [[4, LON, LAT + 0.002]]}
+        )
+        assert edited.status_code == 200, edited.text
+        done = client.post(f"/api/review/{held}/approve", headers=auth())
+        assert done.json()["moved"] == 1

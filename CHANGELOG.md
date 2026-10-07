@@ -11,6 +11,13 @@ Entries are written for someone reading the release page, not for someone readin
 
 Nothing yet.
 
+## [0.19.17] - 2026-10-07
+
+### Added
+- **A point can be dragged somewhere else in the review.** In *Drag map*, press on a dot and drag it; the line bends through where it is put, in the same blue as a hand-drawn line, and the moved dot turns blue too. A press that does not travel is still a click and selects; a press on the map rather than a dot still moves the map. *Restore* puts a moved point back where the phone had it, and *Remove* removes it.
+
+  The phone's point is never rewritten. A moved point leaves the phone's track the way a removed one does, the track breaks around it, and accepting writes a hand-drawn line from the point before, through the new place, to the point after — in the track's year and at its width. Neighbours moved together are one bend rather than lines crossing. The line reaches its neighbours even where the split rule had cut, which is the point of dragging a stray fix onto the railway it should have been on; the blue line is on screen before anything is accepted.
+
 ## [0.19.16] - 2026-10-07
 
 ### Changed

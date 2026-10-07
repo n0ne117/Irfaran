@@ -1047,6 +1047,42 @@ class TestLeavingPointsOutOnTheMap:
         assert "['==', ['get', 'picked'], true]" in body
 
 
+class TestMovingAPointOnTheMap:
+    """A press on a dot holds the dot; a press anywhere else moves the map."""
+
+    def test_holding_a_dot_stops_the_pan(self) -> None:
+        body = body_of(source("review.ts"), "  private beginDrag(")
+        assert "this.drawTool !== 'off'" in body
+        assert "event.preventDefault()" in body
+        assert body.index("this.nearest(") < body.index("event.preventDefault()")
+
+    def test_a_short_press_is_still_a_click(self) -> None:
+        body = body_of(source("review.ts"), "  private moveDrag(")
+        assert "DRAG_PX" in body
+
+    def test_it_redraws_once_a_frame(self) -> None:
+        body = body_of(source("review.ts"), "  private moveDrag(")
+        assert "requestAnimationFrame" in body
+
+    def test_letting_go_saves(self) -> None:
+        body = body_of(source("review.ts"), "  private endDrag(")
+        assert "void this.queue()" in body
+        text = source("review.ts")
+        assert "window.addEventListener('mouseup', () => this.endDrag())" in text
+
+    def test_a_save_carries_the_moves(self) -> None:
+        body = body_of(source("review.ts"), "  private async saveNow(")
+        assert "moved: [...this.moves]" in body
+
+    def test_a_moved_points_hole_never_closes(self) -> None:
+        body = body_of(source("review.ts"), "private redraw(")
+        assert "this.moves.has(between)" in body
+
+    def test_restore_puts_a_moved_point_back(self) -> None:
+        body = body_of(source("review.ts"), "  private leaveOut(")
+        assert "this.moves.delete(index)" in body
+
+
 class TestALineLongerThanTheScreen:
     """Point to point used to switch panning off from the first vertex to the
     last, so the screen was the longest line that could be drawn. A train ride

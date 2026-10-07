@@ -14,7 +14,7 @@
 // server is told what was decided, not asked what it would look like - a
 // round trip per pixel of slider travel is not a preview.
 
-import type { Map as MapLibreMap } from 'maplibre-gl'
+import type { MapMouseEvent, Map as MapLibreMap } from 'maplibre-gl'
 
 import { ApiError, apiGet, apiSend, getToken } from './api'
 import { MIN_DRAW_ZOOM } from './draw'
@@ -60,6 +60,9 @@ const HEAL_METRES = 250
 
 /** How far from a dot, in screen pixels, a click still picks it. */
 const PICK_PX = 8
+
+/** How far a press on a dot has to travel before it is a drag, not a click. */
+const DRAG_PX = 4
 
 /** The review bar's width slider, in metres either side. */
 const RADIUS_MIN = 1
@@ -150,6 +153,8 @@ interface Detail extends Waiting {
     cuts: number[]
     joins: number[]
     removed: number[]
+    /** [index, lon, lat] for each point dragged somewhere else. */
+    moved: [number, number, number][]
     strokes: Stroke[]
   }
   /** How wide a line drawn here will be: the track's width, not the brush's. */
@@ -261,6 +266,12 @@ export class Review {
   private strokes: Stroke[] = []
   /** Single points left out by hand, by index. */
   private removed = new Set<number>()
+  /** Points dragged by hand, and where to. */
+  private moves = new Map<number, Coordinate>()
+  /** The point being dragged, while it is. */
+  private dragging: { index: number; x: number; y: number; moved: boolean } | null = null
+  /** The redraw a drag has asked for, one per animation frame. */
+  private pendingFrame = 0
   /** Points picked on the map, and where a shift-click range starts. */
   private picked = new Set<number>()
   private anchor: number | null = null
@@ -320,6 +331,8 @@ export class Review {
         ],
         'circle-color': [
           'case',
+          // Put there by hand, so the same blue as a hand-drawn line.
+          ['==', ['get', 'moved'], true], '#7cc4ff',
           ['!', ['has', 'accuracy']], '#b8b8c0',
           ['<=', ['get', 'accuracy'], 10], '#6cc4a1',
           ['<=', ['get', 'accuracy'], 25], '#e8c547',
@@ -470,6 +483,13 @@ export class Review {
     element('review-draw-zoom-in').addEventListener('click', () =>
       this.map.easeTo({ zoom: MIN_DRAW_ZOOM }),
     )
+    // Moving points: a press on a dot holds the dot rather than the map.
+    this.map.on('mousedown', (event) => this.beginDrag(event))
+    this.map.on('mousemove', (event) => this.moveDrag(event))
+    this.map.on('mouseup', () => this.endDrag())
+    // Let go of outside the map, the dot is still let go of.
+    window.addEventListener('mouseup', () => this.endDrag())
+
     // Picking points. Only in Drag map: with Draw armed a press is a line.
     this.map.on('click', (event) => {
       if (!this.current || this.drawTool !== 'off') return
@@ -639,6 +659,9 @@ export class Review {
     this.cuts = new Set(detail.edits.cuts)
     this.joins = new Set(detail.edits.joins)
     this.removed = new Set(detail.edits.removed ?? [])
+    this.moves = new Map(
+      (detail.edits.moved ?? []).map(([index, lon, lat]): [number, Coordinate] => [index, [lon, lat]]),
+    )
     this.picked.clear()
     this.anchor = null
     this.strokes = (detail.edits.strokes ?? []).map((stroke) => ({
@@ -787,27 +810,7 @@ export class Review {
    * A click on nothing lets go of what was picked.
    */
   private pick(point: { x: number; y: number }, range: boolean): void {
-    const hits = this.map.queryRenderedFeatures(
-      [
-        [point.x - PICK_PX, point.y - PICK_PX],
-        [point.x + PICK_PX, point.y + PICK_PX],
-      ],
-      { layers: [FIXES_LAYER] },
-    )
-    let best: number | null = null
-    let bestPx = Infinity
-    for (const hit of hits) {
-      const index = Number(hit.properties?.index)
-      const fix = this.current?.fixes[index]
-      if (!fix) continue
-      const there = this.map.project([fix[0], fix[1]])
-      const px = Math.hypot(there.x - point.x, there.y - point.y)
-      if (px < bestPx) {
-        bestPx = px
-        best = index
-      }
-    }
-
+    const best = this.nearest(point)
     if (best === null) {
       if (!range) this.clearPicked()
       return
@@ -825,6 +828,107 @@ export class Review {
     this.redraw()
   }
 
+  /** The dot nearest a screen point, within PICK_PX, by index. */
+  private nearest(point: { x: number; y: number }): number | null {
+    const hits = this.map.queryRenderedFeatures(
+      [
+        [point.x - PICK_PX, point.y - PICK_PX],
+        [point.x + PICK_PX, point.y + PICK_PX],
+      ],
+      { layers: [FIXES_LAYER] },
+    )
+    let best: number | null = null
+    let bestPx = Infinity
+    for (const hit of hits) {
+      const index = Number(hit.properties?.index)
+      // Where the dot is drawn, which for a moved point is not where the
+      // phone put it.
+      if (!Number.isInteger(index) || hit.geometry.type !== 'Point') continue
+      const [lon, lat] = hit.geometry.coordinates as Coordinate
+      const there = this.map.project([lon, lat])
+      const px = Math.hypot(there.x - point.x, there.y - point.y)
+      if (px < bestPx) {
+        bestPx = px
+        best = index
+      }
+    }
+    return best
+  }
+
+  /** Inside the trim and not in a part left out - the points that can move. */
+  private movable(
+    index: number,
+    from: number,
+    to: number,
+    dropped: Set<number>,
+    owner: Map<number, number>,
+  ): boolean {
+    return index >= from && index <= to && !dropped.has(owner.get(index) ?? 0)
+  }
+
+  // --------------------------------------------------------- moving a point
+
+  /**
+   * A press on a dot in Drag map holds the dot instead of the map. It is a
+   * drag once it has gone DRAG_PX; short of that it is a click, and selects.
+   */
+  private beginDrag(event: MapMouseEvent): void {
+    const detail = this.current
+    if (!detail || this.drawTool !== 'off' || !getToken()) return
+    const index = this.nearest(event.point)
+    if (index === null) return
+
+    const { from, to } = this.trimmed
+    const owner = new Map<number, number>()
+    for (const segment of detail.segments) {
+      if (index >= segment.begin && index <= segment.end) owner.set(index, segment.begin)
+    }
+    if (!this.movable(index, from, to, this.dropped, owner)) return
+
+    // Stops MapLibre's drag-pan for this one press, and only this one.
+    event.preventDefault()
+    this.dragging = { index, x: event.point.x, y: event.point.y, moved: false }
+  }
+
+  private moveDrag(event: MapMouseEvent): void {
+    const drag = this.dragging
+    if (!drag) {
+      // Saying what a press here would do: hold a dot, or move the map.
+      if (this.current && this.drawTool === 'off') {
+        this.map.getCanvas().style.cursor = this.nearest(event.point) === null ? '' : 'move'
+      }
+      return
+    }
+    if (!drag.moved && Math.hypot(event.point.x - drag.x, event.point.y - drag.y) < DRAG_PX) {
+      return
+    }
+    drag.moved = true
+    this.map.getCanvas().style.cursor = 'grabbing'
+    this.moves.set(drag.index, [event.lngLat.lng, event.lngLat.lat])
+    this.removed.delete(drag.index)
+    // One redraw a frame, however fast the pointer: a day is eight thousand
+    // features, and a mousemove can come several times a frame.
+    if (!this.pendingFrame) {
+      this.pendingFrame = window.requestAnimationFrame(() => {
+        this.pendingFrame = 0
+        this.redraw()
+      })
+    }
+  }
+
+  private endDrag(): void {
+    const drag = this.dragging
+    if (!drag) return
+    this.dragging = null
+    this.map.getCanvas().style.cursor = ''
+    if (!drag.moved) return
+    this.picked = new Set([drag.index])
+    this.anchor = drag.index
+    this.paintPicked()
+    this.redraw()
+    void this.queue()
+  }
+
   private clearPicked(): void {
     this.picked.clear()
     this.anchor = null
@@ -836,6 +940,9 @@ export class Review {
   private leaveOut(out: boolean): void {
     if (!this.picked.size) return
     for (const index of this.picked) {
+      // Removing a moved point removes it; restoring puts it back where the
+      // phone said, whichever of the two it was.
+      this.moves.delete(index)
       if (out) this.removed.add(index)
       else this.removed.delete(index)
     }
@@ -849,16 +956,27 @@ export class Review {
   private paintPicked(): void {
     const count = this.picked.size
     let out = 0
-    for (const index of this.picked) if (this.removed.has(index)) out += 1
+    let shifted = 0
+    for (const index of this.picked) {
+      if (this.removed.has(index)) out += 1
+      if (this.moves.has(index)) shifted += 1
+    }
 
+    const done = [
+      this.removed.size ? `${this.removed.size.toLocaleString()} removed` : '',
+      this.moves.size ? `${this.moves.size.toLocaleString()} moved` : '',
+    ].filter(Boolean)
+    const of = [
+      out ? `${out.toLocaleString()} removed` : '',
+      shifted ? `${shifted.toLocaleString()} moved` : '',
+    ].filter(Boolean)
     element('review-pick-note').textContent = !count
-      ? this.removed.size
-        ? `${this.removed.size.toLocaleString()} removed by hand.`
+      ? done.length
+        ? `${done.join(', ')} by hand.`
         : 'Nothing selected.'
-      : `${count.toLocaleString()} selected` +
-        (out ? `, ${out.toLocaleString()} of them removed.` : '.')
+      : `${count.toLocaleString()} selected` + (of.length ? `, of them ${of.join(', ')}.` : '.')
     element<HTMLButtonElement>('review-pick-out').disabled = !count || out === count
-    element<HTMLButtonElement>('review-pick-back').disabled = !out
+    element<HTMLButtonElement>('review-pick-back').disabled = !out && !shifted
     element<HTMLButtonElement>('review-pick-clear').disabled = !count
   }
 
@@ -1060,6 +1178,7 @@ export class Review {
 
   private closeOne(): void {
     this.setDrawTool('off')
+    this.dragging = null
     this.picked.clear()
     this.anchor = null
     this.current = null
@@ -1132,7 +1251,8 @@ export class Review {
         index >= from &&
         index <= to &&
         !dropped.has(owner.get(index) ?? 0) &&
-        !this.removed.has(index),
+        !this.removed.has(index) &&
+        !this.moves.has(index),
     )
 
     // Whether two kept points are one line - the server's _closes, so what is
@@ -1143,7 +1263,9 @@ export class Review {
       if (owner.get(previous) !== owner.get(index)) return false
       if (index === previous + 1) return true
       for (let between = previous + 1; between < index; between += 1) {
-        if (!this.removed.has(between)) return false
+        // A moved point's hole never closes: the blue line through its new
+        // place is what crosses it.
+        if (!this.removed.has(between) || this.moves.has(between)) return false
       }
       return haversine(at(previous), at(index)) <= HEAL_METRES
     }
@@ -1211,8 +1333,41 @@ export class Review {
     }
     closeLeft(null)
 
+    // Moved points, as the lines accepting will draw: neighbours moved
+    // together are one bend, from the kept point before to the kept point
+    // after - the server's _write_moves.
+    const placed = [...this.moves.keys()]
+      .filter((index) => this.movable(index, from, to, dropped, owner))
+      .sort((a, b) => a - b)
+    for (let first = 0; first < placed.length; ) {
+      let last = first
+      while (last + 1 < placed.length && placed[last + 1] === placed[last] + 1) last += 1
+      const bend: Coordinate[] = []
+      const before = placed[first] - 1
+      const after = placed[last] + 1
+      if (keep[before]) bend.push(at(before))
+      for (let run = first; run <= last; run += 1) {
+        bend.push(this.moves.get(placed[run]) as Coordinate)
+      }
+      if (keep[after]) bend.push(at(after))
+      features.push({
+        type: 'Feature',
+        properties: { stroke: true },
+        geometry: { type: 'LineString', coordinates: bend.length === 1 ? [bend[0], bend[0]] : bend },
+      })
+      first = last + 1
+    }
+
     fixes.forEach((fix, index) => {
       const segment = owner.get(index) ?? 0
+      const place = this.moves.get(index)
+      if (place) {
+        features.push({
+          type: 'Feature',
+          properties: { fix: true, index, keep: true, moved: true, picked: this.picked.has(index) },
+          geometry: { type: 'Point', coordinates: place },
+        })
+      }
       const accuracy = fix[3]
       features.push({
         type: 'Feature',
@@ -1362,6 +1517,7 @@ export class Review {
       cuts: [...this.cuts],
       joins: [...this.joins],
       removed: [...this.removed],
+      moved: [...this.moves].map(([index, [lon, lat]]) => [index, lon, lat]),
       strokes: this.strokes,
     }
 
@@ -1384,6 +1540,7 @@ export class Review {
       this.joins.clear()
       this.strokes = []
       this.removed.clear()
+      this.moves.clear()
       const fresh = await apiSend<Detail>('POST', `/api/review/${detail.id}/reset`)
       this.current = fresh
       this.paintOne(fresh)

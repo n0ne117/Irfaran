@@ -45,7 +45,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from typing import Iterable
 
@@ -355,6 +355,11 @@ class Edits:
     #: junk. Unlike a dropped part, the hole they leave can close up again;
     #: see HEAL_METRES.
     removed: tuple[int, ...] = ()
+    #: Fixes dragged somewhere else by hand: (index, lon, lat). The phone's
+    #: point is not changed - it leaves the phone's track like a removed one,
+    #: and accepting draws a hand-drawn line through where it was put instead.
+    #: See _write_moves.
+    moved: tuple[tuple[int, float, float], ...] = ()
     #: Boundaries the rule found and a person disagreed with.
     joins: tuple[int, ...] = ()
     #: Lines drawn by hand inside the review, each a list of [lon, lat]. They
@@ -385,6 +390,10 @@ class Edits:
             cuts=indexes("cuts"),
             joins=indexes("joins"),
             removed=indexes("removed"),
+            moved=tuple(
+                (int(index), float(lon), float(lat))
+                for index, lon, lat in stored.get("moved") or ()
+            ),
             strokes=_strokes(stored.get("strokes") or ()),
         )
 
@@ -398,6 +407,7 @@ class Edits:
                 "cuts": list(self.cuts),
                 "joins": list(self.joins),
                 "removed": list(self.removed),
+                "moved": [list(move) for move in self.moved],
                 "strokes": [stroke.as_dict() for stroke in self.strokes],
             },
             separators=(",", ":"),
@@ -413,6 +423,7 @@ class Edits:
             or bool(self.cuts)
             or bool(self.joins)
             or bool(self.removed)
+            or bool(self.moved)
             or bool(self.strokes)
         )
 
@@ -454,7 +465,7 @@ def kept_indexes(
     begin = max(0, min(edits.begin, last))
     end = last if edits.end < 0 else max(begin, min(edits.end, last))
 
-    removed = set(edits.removed)
+    removed = set(edits.removed) | {move[0] for move in edits.moved}
     if not edits.dropped:
         return [index for index in range(begin, end + 1) if index not in removed]
 
@@ -500,6 +511,7 @@ def boundary_stamps(
     kept: list[int],
     breaks: Iterable[int],
     removed: Iterable[int] = (),
+    moved: Iterable[int] = (),
 ) -> set[str]:
     """Timestamps of the fixes that start a stretch, in what will be added.
 
@@ -515,18 +527,20 @@ def boundary_stamps(
     The one hole that may close up is one made only of points left out by
     hand, with no boundary inside it and its two neighbours within
     HEAL_METRES: a spike taken out of a good trace, not a train taken out of a
-    day.
+    day. A hole with a moved point in it never closes - the hand-drawn line
+    through the point's new place is what crosses it.
 
     Timestamps rather than indexes because these have to survive the journey
     into live.append, where they are indexes into a different list.
     """
     starts = {index for index in breaks}
     taken = set(removed)
+    shifted = set(moved)
     out: set[str] = set()
     previous: int | None = None
     for index in kept:
         if previous is not None and not _closes(
-            fixes, previous, index, starts, taken
+            fixes, previous, index, starts, taken, shifted
         ):
             stamp = _stamp(fixes[index])
             if stamp is not None:
@@ -541,9 +555,12 @@ def _closes(
     index: int,
     starts: set[int],
     taken: set[int],
+    shifted: set[int] = frozenset(),  # type: ignore[assignment]
 ) -> bool:
     """Do two consecutive kept fixes belong to the same stretch?"""
     if any(at in starts for at in range(previous + 1, index + 1)):
+        return False
+    if any(at in shifted for at in range(previous + 1, index)):
         return False
     if index == previous + 1:
         return True
@@ -908,6 +925,7 @@ def detail(conn: sqlite3.Connection, review_id: int) -> dict[str, object]:
             "cuts": list(edits.cuts),
             "joins": list(edits.joins),
             "removed": list(edits.removed),
+            "moved": [list(move) for move in edits.moved],
             "strokes": [
                 stroke.as_dict(_drawn_radius(source)) for stroke in edits.strokes
             ],
@@ -998,6 +1016,7 @@ def edit(
     cuts: Iterable[int] | None = None,
     joins: Iterable[int] | None = None,
     removed: Iterable[int] | None = None,
+    moved: Iterable[object] | None = None,
     strokes: Iterable[object] | None = None,
 ) -> dict[str, object]:
     """Change what approving would add. Nothing enters the log here."""
@@ -1030,6 +1049,8 @@ def edit(
         current.joins = _boundaries(joins, total, "join")
     if removed is not None:
         current.removed = _points(removed, total)
+    if moved is not None:
+        current.moved = _moves(moved, total)
     if strokes is not None:
         current.strokes = _strokes(strokes)
 
@@ -1091,6 +1112,25 @@ def _points(values: Iterable[int], total: int) -> tuple[int, ...]:
             )
         out.add(index)
     return tuple(sorted(out))
+
+
+def _moves(values: Iterable[object], total: int) -> tuple[tuple[int, float, float], ...]:
+    """Points dragged by hand, as [index, lon, lat]. One place per point."""
+    out: dict[int, tuple[int, float, float]] = {}
+    for value in values:
+        try:
+            index, lon, lat = value  # type: ignore[misc]
+            index, lon, lat = int(index), float(lon), float(lat)
+        except (TypeError, ValueError) as exc:
+            raise ReviewError("A moved point is [point number, lon, lat].") from exc
+        if not 0 <= index < total:
+            raise ReviewError(
+                f"Point {index} cannot be moved - this batch has {total} points."
+            )
+        if not (-180.0 <= lon <= 180.0 and -90.0 <= lat <= 90.0):
+            raise ReviewError(f"Point {index} was moved off the planet: {lon}, {lat}.")
+        out[index] = (index, lon, lat)
+    return tuple(out[index] for index in sorted(out))
 
 
 def _strokes(values: Iterable[object]) -> tuple[Stroke, ...]:
@@ -1175,6 +1215,9 @@ class Decision:
     left_out: int = 0
     #: Lines drawn inside the review, each written as a hand-drawn event.
     drawn: int = 0
+    #: Points dragged somewhere else, written as hand-drawn lines through
+    #: where they were put.
+    moved: int = 0
     #: How many continuous stretches it went in as. More than one means the
     #: phone stopped reporting somewhere in the middle.
     stretches: int = 0
@@ -1191,6 +1234,7 @@ class Decision:
             "points": self.points,
             "left_out": self.left_out,
             "drawn": self.drawn,
+            "moved": self.moved,
             "stretches": self.stretches,
             "tiles_touched": len(self.tiles),
             "views": self.views,
@@ -1202,6 +1246,8 @@ class Decision:
         )
         if self.left_out:
             text += f", {self.left_out} left out"
+        if self.moved:
+            text += f", {self.moved} moved"
         if self.drawn:
             text += f", {self.drawn} drawn by hand"
         return text
@@ -1247,7 +1293,13 @@ def approve(conn: sqlite3.Connection, review_id: int) -> Decision:
             source,
             kept,
             meta,
-            breaks_at=boundary_stamps(fixes, keeping, breaks, edits.removed),
+            breaks_at=boundary_stamps(
+                fixes,
+                keeping,
+                breaks,
+                edits.removed,
+                [move[0] for move in edits.moved],
+            ),
         )
         decision.events = outcome.stretches or (1 if outcome.accepted else 0)
         decision.stretches = outcome.stretches
@@ -1268,6 +1320,7 @@ def approve(conn: sqlite3.Connection, review_id: int) -> Decision:
         decision.views = outcome.affected_views()
 
     _write_strokes(conn, source, kept, edits, decision)
+    _write_moves(conn, source, fixes, kept, keeping, edits, breaks, decision)
 
     conn.execute("DELETE FROM review WHERE id = ?", (review_id,))
     return decision
@@ -1311,6 +1364,75 @@ def _write_strokes(
         row = conn.execute("SELECT * FROM events WHERE id = ?", (event_id,)).fetchone()
         decision.tiles |= raster.stamp_event(conn, row)
         decision.drawn += 1
+    view = f"year:{layer}" if layer.isdigit() else layer
+    if decision.views and view not in decision.views:
+        decision.views = [*decision.views, view]
+
+
+def _write_moves(
+    conn: sqlite3.Connection,
+    source: str,
+    fixes: list[common.Fix],
+    kept: list[common.Fix],
+    keeping: list[int],
+    edits: Edits,
+    breaks: list[int],
+    decision: Decision,
+) -> None:
+    """Points dragged by hand, as hand-drawn lines through where they went.
+
+    Moved points next to each other are one line, so dragging two neighbours
+    is one bend rather than two lines crossing. Each line runs from the kept
+    point before to the kept point after, when there is one: that is what a
+    move means - the trace goes through here instead. Across a cut too, which
+    is the point of dragging a stray fix onto the railway it was meant to be
+    on; the line is on screen before it is accepted.
+
+    A point moved inside a trimmed end or a dropped part is ignored, like the
+    rest of what is around it.
+    """
+    if not edits.moved:
+        return
+    eligible = set(
+        kept_indexes(fixes, replace(edits, removed=(), moved=()), breaks)
+    )
+    places = {index: (lon, lat) for index, lon, lat in edits.moved if index in eligible}
+    if not places:
+        return
+
+    keepset = set(keeping)
+    layer = common.layer_for(kept)
+    radius = _drawn_radius(source)
+
+    runs: list[list[int]] = []
+    for index in sorted(places):
+        if runs and index == runs[-1][-1] + 1:
+            runs[-1].append(index)
+        else:
+            runs.append([index])
+
+    for run in runs:
+        line: list[common.Fix] = []
+        before, after = run[0] - 1, run[-1] + 1
+        if before in keepset:
+            line.append(common.Fix(lon=fixes[before].lon, lat=fixes[before].lat))
+        line += [common.Fix(lon=places[i][0], lat=places[i][1]) for i in run]
+        if after in keepset:
+            line.append(common.Fix(lon=fixes[after].lon, lat=fixes[after].lat))
+        event_id = common.store_segment(
+            conn,
+            source="manual",
+            fixes=line,
+            radius_m=radius,
+            layers=[layer],
+            external_id=None,
+            meta={"drawn_for": decision.title, "moved": len(run)},
+        )
+        if event_id is None:
+            continue
+        row = conn.execute("SELECT * FROM events WHERE id = ?", (event_id,)).fetchone()
+        decision.tiles |= raster.stamp_event(conn, row)
+        decision.moved += len(run)
     view = f"year:{layer}" if layer.isdigit() else layer
     if decision.views and view not in decision.views:
         decision.views = [*decision.views, view]
