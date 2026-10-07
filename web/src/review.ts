@@ -853,10 +853,10 @@ export class Review {
 
     element('review-pick-note').textContent = !count
       ? this.removed.size
-        ? `${this.removed.size.toLocaleString()} left out by hand.`
-        : 'Nothing picked.'
-      : `${count.toLocaleString()} picked` +
-        (out ? `, ${out.toLocaleString()} of them already left out.` : '.')
+        ? `${this.removed.size.toLocaleString()} removed by hand.`
+        : 'Nothing selected.'
+      : `${count.toLocaleString()} selected` +
+        (out ? `, ${out.toLocaleString()} of them removed.` : '.')
     element<HTMLButtonElement>('review-pick-out').disabled = !count || out === count
     element<HTMLButtonElement>('review-pick-back').disabled = !out
     element<HTMLButtonElement>('review-pick-clear').disabled = !count

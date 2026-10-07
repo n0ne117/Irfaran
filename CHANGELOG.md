@@ -11,6 +11,11 @@ Entries are written for someone reading the release page, not for someone readin
 
 Nothing yet.
 
+## [0.19.16] - 2026-10-07
+
+### Changed
+- **The point buttons in the review say what they do.** *Leave out*, *Put back* and *Let go* are now *Remove*, *Restore* and *Deselect*, and the line under them says "3 selected, 1 of them removed" rather than "3 picked, 1 of them already left out". Asked as: what do you mean by "leave out" and "let go"? Nothing about what they do has changed — a removed point is still kept beside the batch, which is why it can be restored.
+
 ## [0.19.15] - 2026-10-07
 
 ### Added
