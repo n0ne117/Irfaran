@@ -11,6 +11,24 @@ Entries are written for someone reading the release page, not for someone readin
 
 Nothing yet.
 
+## [0.19.13] - 2026-10-07
+
+### Added
+- **Drawing inside the review.** Freehand and point-to-point, on the review map, with the batch still on screen — no trip back to the world map. A drawn line is blue, so it is never mistaken for what the phone reported, and both ends snap to the nearest reported point so the drawn piece meets the track instead of stopping a few metres short of it.
+
+  A drawn line is part of the review, not of the map. It is kept beside the batch like a trim or a cut: *Undo edits* throws it away, *Discard* throws it away, and only *Add to the map* writes it. When it is written, it goes in as a hand-drawn line of its own — the phone's track is exactly what the phone reported, minus anything left out, and the log says which part somebody drew. It takes the track's year rather than prehistory, and the track's width rather than the brush's, so the cleared strip does not narrow where the phone hands over to the hand.
+
+  *Draw it* on a gap now takes the map to the gap and arms point to point there.
+
+### Changed
+- **Point to point can draw a line longer than the screen**, here and on the world map. Panning used to be switched off from the first click to the last, so the edge of the screen was the end of the line; a train ride with no signal is twenty kilometres, three screens at z14. A vertex is now placed on click and the map pans between clicks — a drag is a pan, a click is a point.
+
+### Fixed
+- **A gap drawn from the review survived discarding the batch.** *Draw it* handed the gap to the world map's tools, which saved the drawn piece the moment it was finished; throwing the batch away afterwards left its filling on the map.
+
+### Note
+Drawing in the review needs the map beside the sidebar, which a phone does not have yet: there the review is still a full-screen panel.
+
 ## [0.19.12] - 2026-10-07
 
 ### Fixed

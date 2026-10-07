@@ -17,6 +17,7 @@
 import type { Map as MapLibreMap } from 'maplibre-gl'
 
 import { ApiError, apiGet, apiSend, getToken } from './api'
+import { MIN_DRAW_ZOOM } from './draw'
 import { element } from './ui'
 
 const SOURCE = 'irfaran-review'
@@ -24,6 +25,20 @@ const KEEP_LAYER = 'irfaran-review-keep'
 const DROP_LAYER = 'irfaran-review-drop'
 const ENDS_LAYER = 'irfaran-review-ends'
 const FIXES_LAYER = 'irfaran-review-fixes'
+const STROKES_LAYER = 'irfaran-review-strokes'
+
+/** The two drawing tools a review offers. Areas and Re-Fog are not filling a gap. */
+export type ReviewTool = 'off' | 'freehand' | 'line'
+
+/**
+ * How close, in screen pixels, a drawn end has to come to a reported point to
+ * be moved onto it. A drawn piece that stops three metres short of the track
+ * it was filling leaves a three-metre hole in the fog, and nobody draws to
+ * the metre with a mouse.
+ */
+const SNAP_PX = 16
+
+type Coordinate = [number, number]
 
 /**
  * A stretch this short is a dot rather than a line. One point drew as a line of
@@ -109,7 +124,10 @@ interface Detail extends Waiting {
     dropped: number[]
     cuts: number[]
     joins: number[]
+    strokes: Coordinate[][]
   }
+  /** How wide a line drawn here will be: the track's width, not the brush's. */
+  drawn_radius_m: number
   keeping: number
   keeping_metres: number
   stretches: number
@@ -196,11 +214,13 @@ export class Review {
   private readonly onApproved: (summary: string) => void
   /** Hides everything else on the map while one batch is being looked at. */
   private readonly setRestVisible: (visible: boolean) => void
-  private readonly onDrawGap: (
-    from: [number, number],
-    to: [number, number],
-    year: string,
+  /** Lend the real drawing tool to the review, and take it back. */
+  private readonly startDrawing: (
+    tool: Exclude<ReviewTool, 'off'>,
+    radiusM: number,
+    onLine: (coordinates: Coordinate[]) => void,
   ) => void
+  private readonly stopDrawing: () => void
 
   private items: Waiting[] = []
   private current: Detail | null = null
@@ -211,6 +231,9 @@ export class Review {
   /** Boundaries added and removed by hand, mirrored so a save carries them. */
   private cuts = new Set<number>()
   private joins = new Set<number>()
+  /** Lines drawn in this review, mirrored so a save carries them. */
+  private strokes: Coordinate[][] = []
+  private drawTool: ReviewTool = 'off'
   private watching = false
 
   constructor(
@@ -219,18 +242,20 @@ export class Review {
       onOpen: () => void
       onApproved: (summary: string) => void
       setRestVisible: (visible: boolean) => void
-      onDrawGap: (
-        from: [number, number],
-        to: [number, number],
-        year: string,
+      startDrawing: (
+        tool: Exclude<ReviewTool, 'off'>,
+        radiusM: number,
+        onLine: (coordinates: Coordinate[]) => void,
       ) => void
+      stopDrawing: () => void
     },
   ) {
     this.map = map
     this.onOpen = hooks.onOpen
     this.onApproved = hooks.onApproved
     this.setRestVisible = hooks.setRestVisible
-    this.onDrawGap = hooks.onDrawGap
+    this.startDrawing = hooks.startDrawing
+    this.stopDrawing = hooks.stopDrawing
   }
 
   // ------------------------------------------------------------- map layers
@@ -302,6 +327,20 @@ export class Review {
         'line-opacity': 0.95,
       },
     })
+    // Drawn by hand in this review. A colour of its own, because the whole
+    // point of keeping it apart is that it is not what the phone reported.
+    this.map.addLayer({
+      id: STROKES_LAYER,
+      type: 'line',
+      source: SOURCE,
+      filter: ['==', ['get', 'stroke'], true],
+      layout: { 'line-join': 'round', 'line-cap': 'round' },
+      paint: {
+        'line-color': '#7cc4ff',
+        'line-width': ['interpolate', ['linear'], ['zoom'], 6, 2, 14, 4, 18, 6],
+        'line-opacity': 0.95,
+      },
+    })
     // Where it starts and where it stops - the two ends a trim is usually
     // about.
     this.map.addLayer({
@@ -367,6 +406,25 @@ export class Review {
 
     element<HTMLInputElement>('review-show-rest').addEventListener('change', (event) => {
       this.setRestVisible((event.target as HTMLInputElement).checked)
+    })
+
+    element('review-draw-freehand').addEventListener('click', () =>
+      this.setDrawTool(this.drawTool === 'freehand' ? 'off' : 'freehand'),
+    )
+    element('review-draw-line').addEventListener('click', () =>
+      this.setDrawTool(this.drawTool === 'line' ? 'off' : 'line'),
+    )
+    element('review-draw-undo').addEventListener('click', () =>
+      this.removeStroke(this.strokes.length - 1),
+    )
+    // Drawing is locked out below z14 by the tool itself, which puts itself
+    // away; the buttons have to say so rather than stay lit over nothing.
+    this.map.on('zoomend', () => {
+      if (this.drawTool !== 'off' && this.map.getZoom() < MIN_DRAW_ZOOM) {
+        this.drawTool = 'off'
+        this.stopDrawing()
+      }
+      this.paintDrawTools()
     })
 
     element('review-approve').addEventListener('click', () => void this.approve())
@@ -502,6 +560,9 @@ export class Review {
     element<HTMLInputElement>('review-name').value = detail.title
     this.cuts = new Set(detail.edits.cuts)
     this.joins = new Set(detail.edits.joins)
+    this.strokes = (detail.edits.strokes ?? []).map((line) =>
+      line.map((point): Coordinate => [point[0], point[1]]),
+    )
 
     const last = Math.max(0, detail.points - 1)
     const from = element<HTMLInputElement>('review-from')
@@ -513,6 +574,8 @@ export class Review {
 
     this.paintGaps(detail)
     this.paintSegments(detail)
+    this.paintStrokes()
+    this.paintDrawTools()
   }
 
   /**
@@ -585,7 +648,7 @@ export class Review {
         drawIt.type = 'button'
         drawIt.textContent = 'Draw it'
         drawIt.title =
-          'Draw the missing stretch by hand, then come back here'
+          'Draw the missing stretch by hand, here in the review'
         drawIt.addEventListener('click', () => this.handOver(gap))
         buttons.append(drawIt)
       }
@@ -596,10 +659,13 @@ export class Review {
   }
 
   /**
-   * Hand this gap to the Track tool, and expect to come back.
+   * Draw across this gap, here.
    *
-   * Saved first: a trim or a rename made a moment ago must not be lost to a
-   * detour through the drawing tools.
+   * It used to hand the gap to the world map's drawing tools and come back,
+   * which saved the drawn piece there and then - so discarding the batch
+   * afterwards left its filling on the map. Now the camera goes to the gap and
+   * the line tool is armed in the review, and the piece is part of the review
+   * until the review is decided.
    */
   private handOver(gap: Gap): void {
     const detail = this.current
@@ -608,12 +674,135 @@ export class Review {
     const after = detail.fixes[gap.index]
     if (!before || !after) return
 
-    void this.flush().then(() => {
-      this.onDrawGap(
-        [before[0], before[1]],
-        [after[0], after[1]],
-        (detail.day || '').slice(0, 4),
-      )
+    const from: Coordinate = [before[0], before[1]]
+    const to: Coordinate = [after[0], after[1]]
+    const camera = this.map.cameraForBounds(
+      [
+        [Math.min(from[0], to[0]), Math.min(from[1], to[1])],
+        [Math.max(from[0], to[0]), Math.max(from[1], to[1])],
+      ],
+      { padding: 80, maxZoom: 17 },
+    )
+    // Jumped rather than eased: drawing is locked out below z14 and the tool
+    // is armed on the next line, so the camera has to already be there. A gap
+    // wider than the screen at z14 is drawn by clicking and panning along.
+    this.map.jumpTo({
+      center: (camera?.center as never) ?? [(from[0] + to[0]) / 2, (from[1] + to[1]) / 2],
+      zoom: Math.max(MIN_DRAW_ZOOM, Number(camera?.zoom ?? MIN_DRAW_ZOOM)),
+    })
+    this.setDrawTool('line')
+  }
+
+  // ------------------------------------------------------- drawing by hand
+
+  private setDrawTool(tool: ReviewTool): void {
+    const detail = this.current
+    if (tool !== 'off' && (!detail || this.map.getZoom() < MIN_DRAW_ZOOM)) {
+      this.paintDrawTools()
+      return
+    }
+    const was = this.drawTool
+    this.drawTool = tool
+    if (tool === 'off') {
+      if (was !== 'off') this.stopDrawing()
+    } else if (detail) {
+      this.startDrawing(tool, detail.drawn_radius_m, (line) => this.addStroke(line))
+    }
+    this.paintDrawTools()
+  }
+
+  private paintDrawTools(): void {
+    const allowed = this.map.getZoom() >= MIN_DRAW_ZOOM
+    for (const [id, tool] of [
+      ['review-draw-freehand', 'freehand'],
+      ['review-draw-line', 'line'],
+    ] as const) {
+      const button = element<HTMLButtonElement>(id)
+      button.setAttribute('aria-pressed', String(this.drawTool === tool))
+      button.disabled = !allowed
+    }
+    element<HTMLButtonElement>('review-draw-undo').disabled = this.strokes.length === 0
+
+    const hint = element('review-draw-hint')
+    hint.textContent = !allowed
+      ? `Zoom to ${MIN_DRAW_ZOOM} or closer to draw.`
+      : this.drawTool === 'freehand'
+        ? 'Drag along the way you went. The ends snap to the nearest dot.'
+        : this.drawTool === 'line'
+          ? 'Click from point to point, dragging the map along as you go. ' +
+            'Double click to finish.'
+          : ''
+    hint.hidden = hint.textContent === ''
+  }
+
+  /** A finished line from the drawing tool, with its ends put on the track. */
+  private addStroke(line: Coordinate[]): void {
+    if (!this.current || line.length < 2) return
+    const snapped = [...line]
+    snapped[0] = this.snap(snapped[0])
+    snapped[snapped.length - 1] = this.snap(snapped[snapped.length - 1])
+    this.strokes = [...this.strokes, snapped]
+    this.paintStrokes()
+    this.paintDrawTools()
+    this.redraw()
+    void this.queue()
+  }
+
+  private removeStroke(index: number): void {
+    if (index < 0 || index >= this.strokes.length) return
+    this.strokes = this.strokes.filter((_, at) => at !== index)
+    this.paintStrokes()
+    this.paintDrawTools()
+    this.redraw()
+    void this.queue()
+  }
+
+  /** The nearest reported point within SNAP_PX of this one, or the point itself. */
+  private snap(point: Coordinate): Coordinate {
+    const detail = this.current
+    if (!detail) return point
+    const at = this.map.project(point)
+    let best: Coordinate = point
+    let bestPx = SNAP_PX
+    for (const fix of detail.fixes) {
+      const there = this.map.project([fix[0], fix[1]])
+      const px = Math.hypot(there.x - at.x, there.y - at.y)
+      if (px <= bestPx) {
+        bestPx = px
+        best = [fix[0], fix[1]]
+      }
+    }
+    return best
+  }
+
+  private paintStrokes(): void {
+    const host = element('review-strokes')
+    host.textContent = ''
+    host.hidden = this.strokes.length === 0
+    this.strokes.forEach((line, index) => {
+      const row = document.createElement('div')
+      row.className = 'review-gap'
+
+      const text = document.createElement('span')
+      const strong = document.createElement('strong')
+      strong.textContent = `Line ${index + 1}`
+      const rest = document.createElement('span')
+      rest.className = 'review-gap-detail'
+      let metres = 0
+      for (let at = 1; at < line.length; at += 1) metres += haversine(line[at - 1], line[at])
+      rest.textContent = ` — ${formatDistance(metres)}`
+      text.append(strong, rest)
+
+      const remove = document.createElement('button')
+      remove.type = 'button'
+      remove.textContent = 'Remove'
+      remove.addEventListener('click', () => this.removeStroke(index))
+
+      const buttons = document.createElement('span')
+      buttons.className = 'review-gap-buttons'
+      buttons.append(remove)
+      row.append(text, buttons)
+      host.append(row)
     })
   }
 
@@ -681,6 +870,7 @@ export class Review {
   }
 
   private closeOne(): void {
+    this.setDrawTool('off')
     this.current = null
     element('review-one').hidden = true
     element('review-list-view').hidden = false
@@ -827,6 +1017,14 @@ export class Review {
       })
     }
 
+    for (const line of this.strokes) {
+      features.push({
+        type: 'Feature',
+        properties: { stroke: true },
+        geometry: { type: 'LineString', coordinates: line },
+      })
+    }
+
     this.paint({ type: 'FeatureCollection', features })
     this.paintTrimNote(detail, from, to, keptCount, keptMetres)
   }
@@ -940,6 +1138,7 @@ export class Review {
       dropped: [...this.dropped],
       cuts: [...this.cuts],
       joins: [...this.joins],
+      strokes: this.strokes,
     }
 
     try {
@@ -959,6 +1158,7 @@ export class Review {
     try {
       this.cuts.clear()
       this.joins.clear()
+      this.strokes = []
       const fresh = await apiSend<Detail>('POST', `/api/review/${detail.id}/reset`)
       this.current = fresh
       this.paintOne(fresh)
@@ -981,6 +1181,7 @@ export class Review {
       const done = await apiSend<{
         points: number
         left_out: number
+        drawn: number
         stretches: number
         tiles_touched: number
       }>('POST', `/api/review/${detail.id}/approve`)
@@ -988,7 +1189,8 @@ export class Review {
         done.stretches > 1 ? ` as ${done.stretches} stretches` : ''
       const summary =
         `Added ${done.points.toLocaleString()} points${stretches}` +
-        (done.left_out ? `, ${done.left_out.toLocaleString()} left out` : '')
+        (done.left_out ? `, ${done.left_out.toLocaleString()} left out` : '') +
+        (done.drawn ? `, ${done.drawn} drawn by hand` : '')
 
       this.closeOne()
       await this.load()

@@ -250,7 +250,6 @@ function wireDrawing(
   trails: Trails,
   brush: Brush,
   status: Notice,
-  onStroke: () => void,
 ): Drawing {
   const hint = element('draw-hint')
   const undoButton = element<HTMLButtonElement>('draw-undo')
@@ -263,7 +262,6 @@ function wireDrawing(
       void timeline.load()
       void trails.refresh()
       refreshUndo()
-      onStroke()
     },
     (message, bad) => status.show(message, bad),
     // Rasterising a stroke into every view takes seconds on a full archive,
@@ -867,23 +865,7 @@ async function start(): Promise<void> {
   // instances over the same element replace each other's contents.
   const drawStatus = notice('draw-status')
 
-  // Set while a gap in a review is being drawn by hand, and run by the next
-  // stroke that lands. One shot: whatever the stroke was, the review is what
-  // we came from and what we go back to.
-  let backFromDrawing: (() => void) | null = null
-  const drawing = wireDrawing(
-    map,
-    options,
-    timeline,
-    trails,
-    brush,
-    drawStatus,
-    () => {
-      const back = backFromDrawing
-      backFromDrawing = null
-      back?.()
-    },
-  )
+  const drawing = wireDrawing(map, options, timeline, trails, brush, drawStatus)
   const draw = drawing.draw
 
   // A stroke is filed under the year on screen. Before this it came from a
@@ -972,6 +954,7 @@ async function start(): Promise<void> {
   // looked at, and looking at it means seeing it on its own: the fog and the
   // trails are held off while one candidate route is on screen, and put back
   // the moment the sidebar closes however it was closed.
+  let radiusBeforeReview = draw.radiusM
   const review = new Review(map, {
     onOpen: () => sheets.open('review-page'),
     onApproved: (summary) => {
@@ -992,43 +975,28 @@ async function start(): Promise<void> {
       setArchiveVisible(map, visible)
       trails.suspend(!visible)
     },
-    // Hand a gap over to the Track tool, and come back afterwards.
-    //
-    // The sidebar is hidden directly rather than through the sheets, so the
-    // review keeps its candidate on the map and its place in the list - the
-    // point of doing this here rather than later is that you are looking at
-    // the gap and know where you went, and that is gone tomorrow.
-    onDrawGap: (from, to, year) => {
-      const camera = map.cameraForBounds(
-        [
-          [Math.min(from[0], to[0]), Math.min(from[1], to[1])],
-          [Math.max(from[0], to[0]), Math.max(from[1], to[1])],
-        ],
-        { padding: 80, maxZoom: 17 },
-      )
-      // Jumped rather than eased: drawing is locked out below z14 and the tool
-      // is armed on the next line, so the camera has to already be there.
-      map.jumpTo({
-        center: (camera?.center as never) ?? [(from[0] + to[0]) / 2, (from[1] + to[1]) / 2],
-        zoom: Math.max(MIN_DRAW_ZOOM, Number(camera?.zoom ?? MIN_DRAW_ZOOM)),
-      })
-
-      const before = draw.layers
-      // The hand-drawn piece belongs to the same year as the track it fills a
-      // hole in, not to prehistory.
-      if (year) draw.layers = year
-      element('review-page').hidden = true
-      drawing.arm('freehand')
-      drawStatus.show(
-        'Draw the stretch the phone missed. It is saved as a hand-drawn ' +
-          'route, and the review is waiting.',
-      )
-
-      backFromDrawing = () => {
-        draw.layers = before
-        drawing.putAway()
-        sheets.open('review-page')
-      }
+    // The review borrows the real drawing tool rather than growing its own:
+    // the same brush, the same thinning and smoothing, the same z14 lock. What
+    // differs is where a finished line goes - into the review, to be written
+    // only if the batch is accepted - and how wide it is, which is the track's
+    // width so the cleared strip does not narrow where the drawn piece joins.
+    // The world map's toolbar stays shut; its Undo and its Re-Fog are about
+    // the archive, and nothing drawn here is in the archive yet.
+    startDrawing: (tool, radiusM, onLine) => {
+      if (draw.capture === null) radiusBeforeReview = draw.radiusM
+      draw.capture = onLine
+      draw.radiusM = radiusM
+      brush.setRadius(radiusM)
+      draw.setTool(tool)
+      brush.setTool(tool)
+    },
+    stopDrawing: () => {
+      if (draw.capture === null) return
+      draw.capture = null
+      draw.setTool('off')
+      brush.setTool('off')
+      draw.radiusM = radiusBeforeReview
+      brush.setRadius(radiusBeforeReview)
     },
   })
   sheetsChanged = () => {

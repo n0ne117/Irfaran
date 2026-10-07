@@ -1470,7 +1470,7 @@ def review_edit(
     if not isinstance(payload, dict):
         raise HTTPException(status_code=400, detail="Send an object of changes.")
 
-    allowed = {"title", "from", "to", "dropped", "cuts", "joins"}
+    allowed = {"title", "from", "to", "dropped", "cuts", "joins", "strokes"}
     unknown = sorted(set(payload) - allowed)
     if unknown:
         raise HTTPException(
@@ -1490,6 +1490,7 @@ def review_edit(
                 dropped=payload.get("dropped"),
                 cuts=payload.get("cuts"),
                 joins=payload.get("joins"),
+                strokes=payload.get("strokes"),
             )
     except review.ReviewError as exc:
         raise _review_error(exc) from exc
@@ -1531,6 +1532,7 @@ def review_approve(
                     "points": decision.points,
                     "left_out": decision.left_out,
                     "events": decision.events,
+                    "drawn": decision.drawn,
                 },
             )
     except review.ReviewError as exc:

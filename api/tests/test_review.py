@@ -875,3 +875,108 @@ class TestStillCollectingMeansToday:
         review.hold_track(conn, "intervals", track)
         item = review.waiting(conn)[0]
         assert item["collecting"] is False
+
+
+#: A drawn line across open water beside the synthetic track, as [lon, lat].
+STROKE = [[LON, LAT + 0.001], [LON + 0.002, LAT + 0.0015], [LON + 0.004, LAT + 0.001]]
+
+
+class TestDrawingInsideTheReview:
+    """Reported as: let me draw in the review, not on the world map.
+
+    The world-map detour saved its stroke the moment it was finished, so a
+    batch discarded afterwards left its hand-drawn filling on the map. Inside
+    the review a drawn line is an edit like any other: kept beside the batch,
+    thrown away by reset or discard, and written only by accepting - as a
+    hand-drawn event of its own, never as points the phone did not report.
+    """
+
+    @pytest.fixture
+    def held(self, conn) -> int:
+        review.hold_fixes(conn, "overland", fixes(40))
+        return int(review.overview(conn)["items"][0]["id"])
+
+    def test_a_line_is_kept_with_the_batch(self, conn, held) -> None:
+        detail = review.edit(conn, held, strokes=[STROKE])
+        assert detail["edits"]["strokes"] == [STROKE]
+        assert review.detail(conn, held)["edits"]["strokes"] == [STROKE]
+
+    def test_nothing_is_written_until_it_is_accepted(self, conn, held) -> None:
+        review.edit(conn, held, strokes=[STROKE])
+        assert conn.execute("SELECT count(*) FROM events").fetchone()[0] == 0
+        assert conn.execute("SELECT count(*) FROM blobs").fetchone()[0] == 0
+
+    def test_reset_throws_it_away(self, conn, held) -> None:
+        review.edit(conn, held, strokes=[STROKE])
+        assert review.reset(conn, held)["edits"]["strokes"] == []
+
+    def test_discard_throws_it_away(self, conn, held) -> None:
+        review.edit(conn, held, strokes=[STROKE])
+        review.discard(conn, held)
+        assert conn.execute("SELECT count(*) FROM events").fetchone()[0] == 0
+
+    def test_accepting_writes_it_as_hand_drawn(self, conn, held) -> None:
+        review.edit(conn, held, strokes=[STROKE, STROKE[:2]])
+        decision = review.approve(conn, held)
+        assert decision.drawn == 2
+        assert "2 drawn by hand" in decision.summary()
+
+        rows = conn.execute(
+            "SELECT source, geometry FROM events ORDER BY id"
+        ).fetchall()
+        assert [row["source"] for row in rows] == ["overland", "manual", "manual"]
+        # The phone's track is only what the phone reported.
+        phone = json.loads(rows[0]["geometry"])["coordinates"]
+        assert len(phone) == 40
+        assert json.loads(rows[1]["geometry"])["coordinates"] == STROKE
+
+    def test_it_takes_the_tracks_year_and_width(self, conn, held) -> None:
+        review.edit(conn, held, strokes=[STROKE])
+        review.approve(conn, held)
+        row = conn.execute(
+            "SELECT radius_m, layers, meta FROM events WHERE source = 'manual'"
+        ).fetchone()
+        assert json.loads(row["layers"]) == ["2026"]
+        assert row["radius_m"] == common.RADIUS_DEFAULTS_M["overland"]
+        assert json.loads(row["meta"])["drawn_for"]
+
+    def test_it_is_stamped_and_its_tiles_rendered(self, conn, held) -> None:
+        review.edit(conn, held, strokes=[STROKE])
+        before = len(review.approve(conn, held).tiles)
+        assert before > 0
+        assert conn.execute(
+            "SELECT count(*) FROM blobs WHERE source = 'manual'"
+        ).fetchone()[0] > 0
+
+    def test_the_page_is_told_the_width_it_will_land_at(self, conn, held) -> None:
+        detail = review.detail(conn, held)
+        assert detail["drawn_radius_m"] == common.RADIUS_DEFAULTS_M["overland"]
+
+    def test_a_single_point_is_not_a_line(self, conn, held) -> None:
+        with pytest.raises(review.ReviewError, match="between 2"):
+            review.edit(conn, held, strokes=[[STROKE[0]]])
+
+    def test_a_point_off_the_planet_is_refused(self, conn, held) -> None:
+        with pytest.raises(review.ReviewError, match="off the planet"):
+            review.edit(conn, held, strokes=[[STROKE[0], [200.0, 0.0]]])
+
+    def test_a_point_that_is_not_a_pair_is_refused(self, conn, held) -> None:
+        with pytest.raises(review.ReviewError, match="not \\[lon, lat\\]"):
+            review.edit(conn, held, strokes=[[STROKE[0], ["a", "b"]]])
+
+    def test_there_is_a_limit(self, conn, held) -> None:
+        with pytest.raises(review.ReviewError, match="more than one review"):
+            review.edit(conn, held, strokes=[STROKE] * (review.STROKE_LIMIT + 1))
+
+    def test_the_endpoint_takes_them(self, client) -> None:
+        enable(client, "overland")
+        post(client, 12)
+        held = client.get("/api/review").json()["items"][0]["id"]
+        edited = client.patch(
+            f"/api/review/{held}", headers=auth(), json={"strokes": [STROKE]}
+        )
+        assert edited.status_code == 200, edited.text
+        done = client.post(f"/api/review/{held}/approve", headers=auth())
+        assert done.json()["drawn"] == 1
+        sources = [event["source"] for event in client.get("/api/events").json()["events"]]
+        assert sorted(sources) == ["manual", "overland"]

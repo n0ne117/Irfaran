@@ -49,6 +49,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Iterable
 
+from irfaran import raster
 from irfaran.ingest import common, live
 
 #: Sources that can be held back. Manual drawing and file imports are not
@@ -302,6 +303,12 @@ GAP_FLOOR_M = 100.0
 #: How many gaps a review will talk about, widest first.
 GAP_LIMIT = 60
 
+#: Limits on what can be drawn into one review. Generous - a hand-drawn
+#: stretch is a few dozen points once the brush has thinned it - but a stored
+#: edit is read back on every look at the batch, so it cannot be unbounded.
+STROKE_LIMIT = 100
+STROKE_POINTS = 5000
+
 
 @dataclass
 class Edits:
@@ -320,6 +327,11 @@ class Edits:
     cuts: tuple[int, ...] = ()
     #: Boundaries the rule found and a person disagreed with.
     joins: tuple[int, ...] = ()
+    #: Lines drawn by hand inside the review, each a list of [lon, lat]. They
+    #: are not fixes and never join the phone's track: accepting writes each
+    #: one as a hand-drawn event of its own, so the log says which part the
+    #: phone reported and which part somebody drew.
+    strokes: tuple[tuple[tuple[float, float], ...], ...] = ()
 
     @classmethod
     def load(cls, raw: str | None) -> "Edits":
@@ -342,6 +354,10 @@ class Edits:
             dropped=indexes("dropped"),
             cuts=indexes("cuts"),
             joins=indexes("joins"),
+            strokes=tuple(
+                tuple((float(lon), float(lat)) for lon, lat in stroke)
+                for stroke in stored.get("strokes") or ()
+            ),
         )
 
     def dump(self) -> str:
@@ -353,6 +369,7 @@ class Edits:
                 "dropped": list(self.dropped),
                 "cuts": list(self.cuts),
                 "joins": list(self.joins),
+                "strokes": [[list(point) for point in stroke] for stroke in self.strokes],
             },
             separators=(",", ":"),
         )
@@ -366,6 +383,7 @@ class Edits:
             or bool(self.dropped)
             or bool(self.cuts)
             or bool(self.joins)
+            or bool(self.strokes)
         )
 
 
@@ -826,7 +844,11 @@ def detail(conn: sqlite3.Connection, review_id: int) -> dict[str, object]:
             "dropped": list(edits.dropped),
             "cuts": list(edits.cuts),
             "joins": list(edits.joins),
+            "strokes": [[list(point) for point in stroke] for stroke in edits.strokes],
         },
+        # The width a line drawn in this review will be written at, so the
+        # brush ring on screen is the width that will land.
+        "drawn_radius_m": _drawn_radius(source),
         "keeping": len(kept),
         "keeping_metres": length_m([fixes[index] for index in kept]),
         "stretches": len(segment_ranges(fixes, breaks)),
@@ -909,6 +931,7 @@ def edit(
     dropped: Iterable[int] | None = None,
     cuts: Iterable[int] | None = None,
     joins: Iterable[int] | None = None,
+    strokes: Iterable[object] | None = None,
 ) -> dict[str, object]:
     """Change what approving would add. Nothing enters the log here."""
     row = _row(conn, review_id)
@@ -938,6 +961,8 @@ def edit(
         current.cuts = _boundaries(cuts, total, "cut")
     if joins is not None:
         current.joins = _boundaries(joins, total, "join")
+    if strokes is not None:
+        current.strokes = _strokes(strokes)
 
     if dropped is not None:
         starts = {begin for begin, _ in segment_ranges(
@@ -983,6 +1008,35 @@ def _boundaries(values: Iterable[int], total: int, what: str) -> tuple[int, ...]
     return tuple(sorted(out))
 
 
+def _strokes(values: Iterable[object]) -> tuple[tuple[tuple[float, float], ...], ...]:
+    """Hand-drawn lines, checked the way a drawn event would be."""
+    out: list[tuple[tuple[float, float], ...]] = []
+    for number, stroke in enumerate(values, start=1):
+        if not isinstance(stroke, (list, tuple)) or not 2 <= len(stroke) <= STROKE_POINTS:
+            raise ReviewError(
+                f"Drawn line {number} needs between 2 and {STROKE_POINTS} points."
+            )
+        points: list[tuple[float, float]] = []
+        for point in stroke:
+            try:
+                lon, lat = (float(value) for value in point)  # type: ignore[union-attr]
+            except (TypeError, ValueError) as exc:
+                raise ReviewError(
+                    f"Drawn line {number} has a point that is not [lon, lat]."
+                ) from exc
+            if not (-180.0 <= lon <= 180.0 and -90.0 <= lat <= 90.0):
+                raise ReviewError(
+                    f"Drawn line {number} has a point off the planet: {lon}, {lat}."
+                )
+            points.append((lon, lat))
+        out.append(tuple(points))
+    if len(out) > STROKE_LIMIT:
+        raise ReviewError(
+            f"{len(out)} drawn lines is more than one review holds ({STROKE_LIMIT})."
+        )
+    return tuple(out)
+
+
 def _index(value: object, total: int, what: str) -> int:
     try:
         number = int(value)  # type: ignore[arg-type]
@@ -1013,6 +1067,8 @@ class Decision:
     skipped: int = 0
     points: int = 0
     left_out: int = 0
+    #: Lines drawn inside the review, each written as a hand-drawn event.
+    drawn: int = 0
     #: How many continuous stretches it went in as. More than one means the
     #: phone stopped reporting somewhere in the middle.
     stretches: int = 0
@@ -1028,6 +1084,7 @@ class Decision:
             "skipped": self.skipped,
             "points": self.points,
             "left_out": self.left_out,
+            "drawn": self.drawn,
             "stretches": self.stretches,
             "tiles_touched": len(self.tiles),
             "views": self.views,
@@ -1039,6 +1096,8 @@ class Decision:
         )
         if self.left_out:
             text += f", {self.left_out} left out"
+        if self.drawn:
+            text += f", {self.drawn} drawn by hand"
         return text
 
 
@@ -1102,8 +1161,54 @@ def approve(conn: sqlite3.Connection, review_id: int) -> Decision:
         decision.tiles = set(outcome.tiles_touched)
         decision.views = outcome.affected_views()
 
+    _write_strokes(conn, source, kept, edits, decision)
+
     conn.execute("DELETE FROM review WHERE id = ?", (review_id,))
     return decision
+
+
+def _drawn_radius(source: str) -> float:
+    return common.RADIUS_DEFAULTS_M.get(source, common.RADIUS_DEFAULTS_M["manual"])
+
+
+def _write_strokes(
+    conn: sqlite3.Connection,
+    source: str,
+    kept: list[common.Fix],
+    edits: Edits,
+    decision: Decision,
+) -> None:
+    """The lines drawn in the review, as the hand-drawn events they are.
+
+    Manual events, through the same store and stamp a file import uses, so a
+    rebuild treats them like any other stroke. Two things are taken from the
+    track rather than from the brush: the year, because a piece filling a hole
+    in a 2026 day belongs to 2026 and not to prehistory, and the width, so the
+    cleared strip does not narrow where the phone's track hands over to the
+    drawn piece.
+    """
+    if not edits.strokes:
+        return
+    layer = common.layer_for(kept)
+    radius = _drawn_radius(source)
+    for stroke in edits.strokes:
+        event_id = common.store_segment(
+            conn,
+            source="manual",
+            fixes=[common.Fix(lon=lon, lat=lat) for lon, lat in stroke],
+            radius_m=radius,
+            layers=[layer],
+            external_id=None,
+            meta={"drawn_for": decision.title},
+        )
+        if event_id is None:
+            continue
+        row = conn.execute("SELECT * FROM events WHERE id = ?", (event_id,)).fetchone()
+        decision.tiles |= raster.stamp_event(conn, row)
+        decision.drawn += 1
+    view = f"year:{layer}" if layer.isdigit() else layer
+    if decision.views and view not in decision.views:
+        decision.views = [*decision.views, view]
 
 
 def _views_of_event(conn: sqlite3.Connection, event_id: int | None) -> list[str]:

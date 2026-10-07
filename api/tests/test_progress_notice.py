@@ -919,45 +919,101 @@ class TestAcceptingATrackShowsOnTheBar:
         assert source("main.ts").count("notice('draw-status')") == 1
 
 
-class TestHandingAGapToTheDrawingTools:
-    """The review does not get its own brush; the real one gets a door."""
+class TestDrawingInsideTheReview:
+    """The review borrows the real brush; it does not grow its own.
+
+    It used to hand a gap to the world map's drawing tools and come back,
+    which saved the drawn piece at once - so a batch discarded afterwards left
+    its filling on the map. Reported as: "I'm against going back to the world
+    map". The tool is the same one; where a finished line goes is not.
+    """
 
     def test_the_review_asks_rather_than_draws(self) -> None:
         text = source("review.ts")
-        assert "this.onDrawGap(" in text
+        assert "this.startDrawing(" in text and "this.stopDrawing()" in text
         for own in ("addSource('irfaran-draw", "pointerdown", "undoStack"):
             assert own not in text, "the review is growing its own drawing tools"
 
-    def test_it_saves_before_leaving(self) -> None:
-        # A trim or a rename made a moment ago must survive the detour.
+    def test_a_captured_line_is_never_posted(self) -> None:
+        body = body_of(source("draw.ts"), "private async finish(")
+        captured = body.index("if (this.capture) {")
+        assert captured < body.index("apiSend")
+        branch = body[captured : body.index("return", captured)]
+        assert "this.capture(" in branch
+
+    def test_the_world_map_is_not_left_any_more(self) -> None:
+        text = source("main.ts")
+        assert "backFromDrawing" not in text
+        assert "element('review-page').hidden = true" not in text
+
+    def test_the_tool_is_given_back(self) -> None:
+        # Width and capture both: a world-map stroke drawn after a review must
+        # be the brush's width, and must reach the log.
+        body = source("main.ts")
+        stop = body[body.index("stopDrawing: () => {") :][:400]
+        assert "draw.capture = null" in stop
+        assert "draw.radiusM = radiusBeforeReview" in stop
+
+    def test_closing_the_batch_puts_the_tool_away(self) -> None:
+        body = body_of(source("review.ts"), "  private closeOne(")
+        assert "this.setDrawTool('off')" in body
+
+    def test_a_gap_takes_the_camera_there_first(self) -> None:
+        # Drawing is locked out below z14, so arming without the camera there
+        # arms nothing.
         body = body_of(source("review.ts"), "  private handOver(")
-        assert "this.flush()" in body
+        assert "this.map.jumpTo(" in body
+        assert "Math.max(MIN_DRAW_ZOOM" in body
+        assert body.index("this.map.jumpTo(") < body.index("this.setDrawTool('line')")
 
     def test_only_a_cut_gap_offers_it(self) -> None:
         body = body_of(source("review.ts"), "  private paintGaps(")
         assert "if (gap.cut) {" in body
 
-    def test_the_tools_can_be_armed_and_put_away(self) -> None:
-        text = source("main.ts")
-        assert "arm(tool: Tool)" in text and "putAway()" in text
+    def test_the_ends_snap_to_the_track(self) -> None:
+        body = body_of(source("review.ts"), "  private addStroke(")
+        assert "this.snap(snapped[0])" in body
+        assert "this.snap(snapped[snapped.length - 1])" in body
 
-    def test_the_camera_arrives_before_the_tool_is_armed(self) -> None:
-        # Drawing is locked out below z14, so easing there and arming would
-        # arm nothing.
-        text = source("main.ts")
-        assert "map.jumpTo(" in text
-        assert "Math.max(MIN_DRAW_ZOOM" in text
+    def test_a_save_carries_the_lines(self) -> None:
+        body = body_of(source("review.ts"), "  private async saveNow(")
+        assert "strokes: this.strokes" in body
 
-    def test_it_comes_back_afterwards(self) -> None:
-        text = source("main.ts")
-        assert "backFromDrawing" in text
-        assert "sheets.open('review-page')" in text
+    def test_the_lines_have_their_own_colour(self) -> None:
+        body = body_of(source("review.ts"), "attach(): void {")
+        assert "id: STROKES_LAYER" in body
+        assert "['==', ['get', 'stroke'], true]" in body
 
-    def test_the_layer_is_put_back(self) -> None:
-        # The hand-drawn piece goes into the track's year, and the field the
-        # person had set is theirs, not ours.
-        text = source("main.ts")
-        assert "draw.layers = before" in text
+
+class TestALineLongerThanTheScreen:
+    """Point to point used to switch panning off from the first vertex to the
+    last, so the screen was the longest line that could be drawn. A train ride
+    with no signal is twenty kilometres - three screens at z14."""
+
+    def test_a_vertex_is_placed_on_click_not_on_press(self) -> None:
+        text = source("draw.ts")
+        assert "canvas.addEventListener('click', (event) => this.place(event))" in text
+        body = body_of(text, "private place(")
+        assert "this.points.push(this.at(event))" in body
+
+    def test_a_pan_is_not_a_click(self) -> None:
+        body = body_of(source("draw.ts"), "private place(")
+        assert "CLICK_SLOP_PX" in body
+
+    def test_pressing_with_a_vertex_tool_leaves_panning_alone(self) -> None:
+        body = body_of(source("draw.ts"), "private begin(")
+        vertex = body[: body.index("this.map.dragPan.disable()")]
+        assert "this.downAt =" in vertex and "return" in vertex
+
+    def test_a_vertex_on_a_track_does_not_open_its_popup(self) -> None:
+        # The press is no longer swallowed, so the map's own click fires too.
+        assert "dataset.drawing = 'true'" in body_of(source("draw.ts"), "setTool(tool: Tool)")
+        # Sliced rather than body_of: the signature's own type annotation is
+        # the first balanced brace, and body_of would stop there.
+        text = source("trails.ts")
+        start = text.index("private identify(")
+        body = text[start : text.index("mapPopup(", start)]
+        assert "dataset.drawing === 'true'" in body
 
 
 class TestWhatThePhoneSaidIsShown:

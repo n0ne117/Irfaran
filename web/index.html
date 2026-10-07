@@ -329,6 +329,20 @@
         </p>
         <div id="review-gaps" class="review-gaps" hidden></div>
 
+        <h2>Drawn by hand</h2>
+        <p class="hint">
+          Draw what the phone missed, in blue. It stays with this batch and
+          reaches the map only when you add the batch, as hand-drawn lines —
+          the phone's own track stays exactly as it was reported.
+        </p>
+        <div class="button-row">
+          <button id="review-draw-freehand" type="button" aria-pressed="false">Freehand</button>
+          <button id="review-draw-line" type="button" aria-pressed="false">Point to point</button>
+          <button id="review-draw-undo" type="button" disabled>Undo</button>
+        </div>
+        <p id="review-draw-hint" class="hint" hidden></p>
+        <div id="review-strokes" class="review-gaps" hidden></div>
+
         <h2 id="review-parts-heading">Parts</h2>
         <p class="hint">
           Split where the trace jumps in time or distance. Untick one to leave

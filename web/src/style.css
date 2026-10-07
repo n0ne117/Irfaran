@@ -2270,6 +2270,13 @@ kbd {
   gap: 0.25rem;
 }
 
+/* The review's two drawing tools. Lit while armed, the way the toolbar's are,
+   so the map is never in drawing mode with nothing saying so. */
+#review-one button[aria-pressed='true'] {
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+
 /* ---------------------------------------------------------------- scale bar */
 
 /* MapLibre's own control, wearing this application's clothes. The default is a

@@ -10,6 +10,9 @@ import { watchRender } from './render'
 /** Below this the brush is meaningless: one screen pixel exceeds its diameter. */
 export const MIN_DRAW_ZOOM = 14
 
+/** How far a pointer may move between down and up and still be a click. */
+const CLICK_SLOP_PX = 5
+
 /** Points closer together than this add nothing but bytes. */
 const THIN_METRES = 5
 
@@ -170,6 +173,8 @@ export class Draw {
   private drawing = false
   private undoing = false
   private points: Point[] = []
+  /** Where the pointer went down, so a click can be told from a pan. */
+  private downAt: { x: number; y: number } | null = null
   private readonly undoStack: number[] = []
   private readonly map: MapLike
   private readonly onSaved: () => void
@@ -185,6 +190,16 @@ export class Draw {
    * when the tiles come back is not drawing.
    */
   onPreview: (points: Point[]) => void = () => {}
+
+  /**
+   * Somewhere else to send a finished line instead of the event log.
+   *
+   * The review draws with this same tool, but what it draws is part of a
+   * decision not yet made: it is kept with the batch and written only if the
+   * batch is accepted. So the stroke is thinned and smoothed exactly as here,
+   * and then handed over rather than posted.
+   */
+  capture: ((coordinates: [number, number][]) => void) | null = null
 
   constructor(
     map: MapLike,
@@ -243,6 +258,12 @@ export class Draw {
     // 'off' is the hand tool: the map pans and nothing is painted.
     this.map.getCanvas().style.cursor =
       tool === 'off' ? 'grab' : tool === 'eraser' ? 'cell' : 'crosshair'
+    // Said on the canvas for the layers that answer a click. Point to point
+    // leaves the map's own click alone, so that panning between vertices
+    // works - which means a vertex placed on a track is also a click on the
+    // track, and must not open its popup.
+    if (tool === 'off') delete this.map.getCanvas().dataset.drawing
+    else this.map.getCanvas().dataset.drawing = 'true'
     if (tool === 'off') {
       this.map.dragPan.enable()
     }
@@ -255,6 +276,7 @@ export class Draw {
     canvas.addEventListener('pointermove', (event) => this.extend(event))
     canvas.addEventListener('pointerup', () => void this.finish())
     canvas.addEventListener('pointerleave', () => void this.finish())
+    canvas.addEventListener('click', (event) => this.place(event))
 
     // A point-to-point line is finished by double click rather than release.
     canvas.addEventListener('dblclick', (event) => {
@@ -272,28 +294,44 @@ export class Draw {
 
   private begin(event: PointerEvent): void {
     if (this.tool === 'off' || !this.canDraw) return
-    event.preventDefault()
-
-    this.map.dragPan.disable()
 
     if (!DRAGGED.has(this.tool)) {
-      // Each click adds a vertex; the stroke ends on double click.
-      if (!this.drawing) {
-        this.drawing = true
-        this.points = [this.at(event)]
-      } else {
-        this.points.push(this.at(event))
-      }
-      this.onStatus(
-        `${this.points.length} ${this.closes ? 'corners' : 'points'}, ` +
-          'double click to finish',
-      )
-      this.onPreview(this.points)
+      // A vertex is placed on click, not here, and the map is left to pan:
+      // a line longer than the screen - a train ride with no signal is twenty
+      // kilometres, three screens at z14 - is drawn by clicking, dragging the
+      // map along, and clicking again. Panning used to be switched off from
+      // the first vertex to the last, which made the screen the longest line.
+      this.downAt = { x: event.clientX, y: event.clientY }
       return
     }
 
+    event.preventDefault()
+    this.map.dragPan.disable()
     this.drawing = true
     this.points = [this.at(event)]
+    this.onPreview(this.points)
+  }
+
+  /** A click with a vertex tool places a vertex - unless it was a pan. */
+  private place(event: MouseEvent): void {
+    if (DRAGGED.has(this.tool) || this.tool === 'off' || !this.canDraw) return
+    const down = this.downAt
+    this.downAt = null
+    if (!down || Math.hypot(event.clientX - down.x, event.clientY - down.y) > CLICK_SLOP_PX) {
+      return
+    }
+
+    // Each click adds a vertex; the stroke ends on double click.
+    if (!this.drawing) {
+      this.drawing = true
+      this.points = [this.at(event)]
+    } else {
+      this.points.push(this.at(event))
+    }
+    this.onStatus(
+      `${this.points.length} ${this.closes ? 'corners' : 'points'}, ` +
+        'double click to finish',
+    )
     this.onPreview(this.points)
   }
 
@@ -342,6 +380,16 @@ export class Draw {
     const thinned = DRAGGED.has(this.tool)
       ? smooth(simplify(thinByDistance(raw), THIN_METRES))
       : raw
+
+    if (this.capture) {
+      if (thinned.length >= 2 && !closes) {
+        this.capture(thinned.map((p) => [p.lng, p.lat]))
+      } else {
+        this.onStatus('A line needs at least two points.')
+      }
+      this.onPreview([])
+      return
+    }
 
     // The preview holds - now showing the geometry that is actually being
     // saved - until the rebuilt tiles arrive, so the stroke does not blink out

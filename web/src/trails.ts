@@ -418,6 +418,8 @@ export class Trails {
 
   private identify(event: { lngLat: unknown; features?: { properties: TrailProperties }[] }): void {
     if (!getTrailPopups() || getTrailStyle() === 'off') return
+    // A vertex being placed, not a question about the track under it.
+    if (this.map.getCanvas().dataset.drawing === 'true') return
 
     const feature = event.features?.[0]
     if (!feature) return
