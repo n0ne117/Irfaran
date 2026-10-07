@@ -40,6 +40,9 @@ COPY web/src ./web/src
 # copies public/ into the build verbatim, so a file in the wrong place is a
 # 404 nobody sees until a phone tries to install the thing.
 COPY web/public ./web/public
+# And the server that hands the manifest out, whose content type decides
+# whether Safari treats it as one.
+COPY web/nginx.conf ./web/nginx.conf
 # The release guard and the changelog it checks, so CI's gate is itself tested.
 COPY scripts ./scripts
 COPY CHANGELOG.md ./CHANGELOG.md

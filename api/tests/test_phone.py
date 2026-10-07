@@ -183,6 +183,19 @@ class TestAddedToTheHomeScreen:
     def test_the_map_goes_under_the_notch(self) -> None:
         assert "viewport-fit=cover" in self.markup()
 
+    def test_the_manifest_is_served_as_one(self) -> None:
+        # Shipped in 0.19.10 as application/octet-stream, because nginx has no
+        # mime entry for the extension. Measured on the live instance.
+        conf = (WEB / "nginx.conf").read_text()
+        at = conf.index("location = /manifest.webmanifest {")
+        block = conf[at : conf.index("}", at)]
+        assert "default_type application/manifest+json;" in block
+        # Without this it would be the one file in / that a browser caches.
+        assert "no-cache" in block
+        # A types block replaces nginx's whole map: every .js and .css would
+        # follow the manifest out as octet-stream.
+        assert not re.search(r"^\s*types\s*\{", conf, re.M)
+
 
 class TestWhatWasTakenAway:
     def test_the_version_corner_is_hidden_but_not_lost(self) -> None:

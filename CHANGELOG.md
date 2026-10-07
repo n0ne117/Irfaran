@@ -11,6 +11,16 @@ Entries are written for someone reading the release page, not for someone readin
 
 Nothing yet.
 
+## [0.19.11] - 2026-10-07
+
+### Fixed
+- **The web app manifest is served as one.** 0.19.10 added "add to home screen", and the manifest behind it went out as `application/octet-stream`, because nginx has no type for `.webmanifest` — measured on the live instance. It is now `application/manifest+json`. Safari is the browser that cares, and Safari is how an iPhone adds anything to its home screen.
+
+  Set for that one file rather than by adding the extension to nginx's type list: a `types` block in the config replaces the built-in list instead of extending it, and every script and stylesheet would have followed the manifest out as octet-stream.
+
+### Note
+**Changes are now tested before they are versioned.** The suite used to run only once a release tag was pushed, so a failing test meant a version number already public with nothing behind it. Every pushed branch now runs the tests and the web build — the only place the TypeScript is type-checked — first. Nothing about the app changes.
+
 ## [0.19.10] - 2026-09-08
 
 ### Added
