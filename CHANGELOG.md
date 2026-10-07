@@ -11,6 +11,14 @@ Entries are written for someone reading the release page, not for someone readin
 
 Nothing yet.
 
+## [0.19.14] - 2026-10-07
+
+### Changed
+- **The review has a drawing bar of its own** — *Drag map*, *Draw*, and how wide — above the map beside the sidebar. 0.19.13 put the drawing buttons in the sidebar and armed point to point from *Draw it*, where a drag pans the map and only a click places a corner: reported as "Draw it still moves the map around", which is exactly what it did, with nothing on screen saying why. Now the mode is always visible and always one of two, and *Draw it* arms *Draw*.
+
+  Point to point is gone from the review. A gap wider than the screen is drawn in pieces instead: draw, switch to *Drag map*, move along, draw again — and each piece now starts on the end of the one before as well as on the phone's own points, so the pieces join.
+- **Each drawn line has its own width.** The slider starts at the track's width, so by default the cleared strip still does not narrow where the phone hands over to the hand; a line drawn wider or narrower lands at the width it was drawn. Lines saved by 0.19.13, which had no width of their own, land at the track's as before.
+
 ## [0.19.13] - 2026-10-07
 
 ### Added

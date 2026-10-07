@@ -18,7 +18,7 @@ import type { Map as MapLibreMap } from 'maplibre-gl'
 
 import { ApiError, apiGet, apiSend, getToken } from './api'
 import { MIN_DRAW_ZOOM } from './draw'
-import { element } from './ui'
+import { element, radioGroup } from './ui'
 
 const SOURCE = 'irfaran-review'
 const KEEP_LAYER = 'irfaran-review-keep'
@@ -27,8 +27,12 @@ const ENDS_LAYER = 'irfaran-review-ends'
 const FIXES_LAYER = 'irfaran-review-fixes'
 const STROKES_LAYER = 'irfaran-review-strokes'
 
-/** The two drawing tools a review offers. Areas and Re-Fog are not filling a gap. */
-export type ReviewTool = 'off' | 'freehand' | 'line'
+/**
+ * Drag the map, or draw. Nothing else: areas and Re-Fog are not filling a gap,
+ * and point to point - where a drag pans and a click places a corner - read as
+ * a tool that would not draw. Reported as: "Draw it still moves the map".
+ */
+export type ReviewTool = 'off' | 'freehand'
 
 /**
  * How close, in screen pixels, a drawn end has to come to a reported point to
@@ -39,6 +43,16 @@ export type ReviewTool = 'off' | 'freehand' | 'line'
 const SNAP_PX = 16
 
 type Coordinate = [number, number]
+
+/** A line drawn in the review, and how wide it clears either side. */
+interface Stroke {
+  line: Coordinate[]
+  radius_m: number
+}
+
+/** The review bar's width slider, in metres either side. */
+const RADIUS_MIN = 1
+const RADIUS_MAX = 60
 
 /**
  * A stretch this short is a dot rather than a line. One point drew as a line of
@@ -124,7 +138,7 @@ interface Detail extends Waiting {
     dropped: number[]
     cuts: number[]
     joins: number[]
-    strokes: Coordinate[][]
+    strokes: Stroke[]
   }
   /** How wide a line drawn here will be: the track's width, not the brush's. */
   drawn_radius_m: number
@@ -232,8 +246,11 @@ export class Review {
   private cuts = new Set<number>()
   private joins = new Set<number>()
   /** Lines drawn in this review, mirrored so a save carries them. */
-  private strokes: Coordinate[][] = []
+  private strokes: Stroke[] = []
   private drawTool: ReviewTool = 'off'
+  /** The width the next line is drawn at. Starts at the track's own. */
+  private radius = 20
+  private paintTool: (value: ReviewTool) => void = () => {}
   private watching = false
 
   constructor(
@@ -408,11 +425,19 @@ export class Review {
       this.setRestVisible((event.target as HTMLInputElement).checked)
     })
 
-    element('review-draw-freehand').addEventListener('click', () =>
-      this.setDrawTool(this.drawTool === 'freehand' ? 'off' : 'freehand'),
+    this.paintTool = radioGroup<ReviewTool>('review-draw-tool', 'off', (tool) =>
+      this.setDrawTool(tool),
     )
-    element('review-draw-line').addEventListener('click', () =>
-      this.setDrawTool(this.drawTool === 'line' ? 'off' : 'line'),
+    const size = element<HTMLInputElement>('review-draw-size')
+    size.addEventListener('input', () => this.setRadius(Number(size.value)))
+    element('review-draw-size-down').addEventListener('click', () =>
+      this.setRadius(this.radius - 1),
+    )
+    element('review-draw-size-up').addEventListener('click', () =>
+      this.setRadius(this.radius + 1),
+    )
+    element('review-draw-zoom-in').addEventListener('click', () =>
+      this.map.easeTo({ zoom: MIN_DRAW_ZOOM }),
     )
     element('review-draw-undo').addEventListener('click', () =>
       this.removeStroke(this.strokes.length - 1),
@@ -536,6 +561,7 @@ export class Review {
       // underneath the person reading it.
       const detail = await apiSend<Detail>('POST', `/api/review/${id}/open`)
       this.current = detail
+      this.radius = detail.drawn_radius_m
       this.paintOne(detail)
       this.setRestVisible(element<HTMLInputElement>('review-show-rest').checked)
       this.redraw()
@@ -560,9 +586,10 @@ export class Review {
     element<HTMLInputElement>('review-name').value = detail.title
     this.cuts = new Set(detail.edits.cuts)
     this.joins = new Set(detail.edits.joins)
-    this.strokes = (detail.edits.strokes ?? []).map((line) =>
-      line.map((point): Coordinate => [point[0], point[1]]),
-    )
+    this.strokes = (detail.edits.strokes ?? []).map((stroke) => ({
+      line: stroke.line.map((point): Coordinate => [point[0], point[1]]),
+      radius_m: stroke.radius_m,
+    }))
 
     const last = Math.max(0, detail.points - 1)
     const from = element<HTMLInputElement>('review-from')
@@ -664,8 +691,8 @@ export class Review {
    * It used to hand the gap to the world map's drawing tools and come back,
    * which saved the drawn piece there and then - so discarding the batch
    * afterwards left its filling on the map. Now the camera goes to the gap and
-   * the line tool is armed in the review, and the piece is part of the review
-   * until the review is decided.
+   * Draw is armed in the review, and the piece is part of the review until the
+   * review is decided.
    */
   private handOver(gap: Gap): void {
     const detail = this.current
@@ -685,12 +712,13 @@ export class Review {
     )
     // Jumped rather than eased: drawing is locked out below z14 and the tool
     // is armed on the next line, so the camera has to already be there. A gap
-    // wider than the screen at z14 is drawn by clicking and panning along.
+    // wider than the screen at z14 is drawn in pieces, dragging the map along
+    // in between; each piece starts on the end of the one before.
     this.map.jumpTo({
       center: (camera?.center as never) ?? [(from[0] + to[0]) / 2, (from[1] + to[1]) / 2],
       zoom: Math.max(MIN_DRAW_ZOOM, Number(camera?.zoom ?? MIN_DRAW_ZOOM)),
     })
-    this.setDrawTool('line')
+    this.setDrawTool('freehand')
   }
 
   // ------------------------------------------------------- drawing by hand
@@ -698,41 +726,53 @@ export class Review {
   private setDrawTool(tool: ReviewTool): void {
     const detail = this.current
     if (tool !== 'off' && (!detail || this.map.getZoom() < MIN_DRAW_ZOOM)) {
-      this.paintDrawTools()
-      return
+      tool = 'off'
     }
     const was = this.drawTool
     this.drawTool = tool
     if (tool === 'off') {
       if (was !== 'off') this.stopDrawing()
-    } else if (detail) {
-      this.startDrawing(tool, detail.drawn_radius_m, (line) => this.addStroke(line))
+    } else {
+      this.startDrawing(tool, this.radius, (line) => this.addStroke(line))
+    }
+    this.paintDrawTools()
+  }
+
+  /** The width of the next line. Lent to the brush at once if it is armed. */
+  private setRadius(metres: number): void {
+    if (!Number.isFinite(metres)) return
+    this.radius = Math.min(RADIUS_MAX, Math.max(RADIUS_MIN, Math.round(metres)))
+    if (this.drawTool !== 'off') {
+      this.startDrawing(this.drawTool, this.radius, (line) => this.addStroke(line))
     }
     this.paintDrawTools()
   }
 
   private paintDrawTools(): void {
+    // Only with a batch open and a token to save it with: a bar that draws
+    // lines nobody can keep is a bar that lies.
+    element('review-draw-bar').hidden = !this.current || !getToken()
+
     const allowed = this.map.getZoom() >= MIN_DRAW_ZOOM
-    for (const [id, tool] of [
-      ['review-draw-freehand', 'freehand'],
-      ['review-draw-line', 'line'],
-    ] as const) {
-      const button = element<HTMLButtonElement>(id)
-      button.setAttribute('aria-pressed', String(this.drawTool === tool))
-      button.disabled = !allowed
-    }
+    this.paintTool(this.drawTool)
+    const draw = element('review-draw-tool').querySelector<HTMLButtonElement>(
+      "button[data-value='freehand']",
+    )
+    if (draw) draw.disabled = !allowed
+    element('review-draw-zoom-in').hidden = allowed
+
+    const size = element<HTMLInputElement>('review-draw-size')
+    if (Number(size.value) !== this.radius) size.value = String(this.radius)
+    element('review-draw-size-label').textContent = `${this.radius} m`
+
     element<HTMLButtonElement>('review-draw-undo').disabled = this.strokes.length === 0
 
-    const hint = element('review-draw-hint')
-    hint.textContent = !allowed
+    element('review-draw-hint').textContent = !allowed
       ? `Zoom to ${MIN_DRAW_ZOOM} or closer to draw.`
       : this.drawTool === 'freehand'
-        ? 'Drag along the way you went. The ends snap to the nearest dot.'
-        : this.drawTool === 'line'
-          ? 'Click from point to point, dragging the map along as you go. ' +
-            'Double click to finish.'
-          : ''
-    hint.hidden = hint.textContent === ''
+        ? 'Drag along the way you went. Drag map to move on, then carry on ' +
+          'from where the last line ended.'
+        : ''
   }
 
   /** A finished line from the drawing tool, with its ends put on the track. */
@@ -741,7 +781,7 @@ export class Review {
     const snapped = [...line]
     snapped[0] = this.snap(snapped[0])
     snapped[snapped.length - 1] = this.snap(snapped[snapped.length - 1])
-    this.strokes = [...this.strokes, snapped]
+    this.strokes = [...this.strokes, { line: snapped, radius_m: this.radius }]
     this.paintStrokes()
     this.paintDrawTools()
     this.redraw()
@@ -757,19 +797,29 @@ export class Review {
     void this.queue()
   }
 
-  /** The nearest reported point within SNAP_PX of this one, or the point itself. */
+  /**
+   * The nearest point within SNAP_PX worth meeting: a reported fix, or the end
+   * of a line already drawn. The second is what lets a gap three screens long
+   * be drawn as three lines that join - draw, drag the map along, carry on
+   * from where the last one stopped.
+   */
   private snap(point: Coordinate): Coordinate {
     const detail = this.current
     if (!detail) return point
+    const candidates: Coordinate[] = detail.fixes.map((fix): Coordinate => [fix[0], fix[1]])
+    for (const stroke of this.strokes) {
+      candidates.push(stroke.line[0], stroke.line[stroke.line.length - 1])
+    }
+
     const at = this.map.project(point)
     let best: Coordinate = point
     let bestPx = SNAP_PX
-    for (const fix of detail.fixes) {
-      const there = this.map.project([fix[0], fix[1]])
+    for (const candidate of candidates) {
+      const there = this.map.project(candidate)
       const px = Math.hypot(there.x - at.x, there.y - at.y)
       if (px <= bestPx) {
         bestPx = px
-        best = [fix[0], fix[1]]
+        best = candidate
       }
     }
     return best
@@ -779,7 +829,7 @@ export class Review {
     const host = element('review-strokes')
     host.textContent = ''
     host.hidden = this.strokes.length === 0
-    this.strokes.forEach((line, index) => {
+    this.strokes.forEach(({ line, radius_m: radius }, index) => {
       const row = document.createElement('div')
       row.className = 'review-gap'
 
@@ -790,7 +840,7 @@ export class Review {
       rest.className = 'review-gap-detail'
       let metres = 0
       for (let at = 1; at < line.length; at += 1) metres += haversine(line[at - 1], line[at])
-      rest.textContent = ` — ${formatDistance(metres)}`
+      rest.textContent = ` — ${formatDistance(metres)} · ${radius} m wide`
       text.append(strong, rest)
 
       const remove = document.createElement('button')
@@ -872,6 +922,7 @@ export class Review {
   private closeOne(): void {
     this.setDrawTool('off')
     this.current = null
+    this.paintDrawTools()
     element('review-one').hidden = true
     element('review-list-view').hidden = false
     element('review-heading').textContent = 'To review'
@@ -1017,11 +1068,11 @@ export class Review {
       })
     }
 
-    for (const line of this.strokes) {
+    for (const stroke of this.strokes) {
       features.push({
         type: 'Feature',
         properties: { stroke: true },
-        geometry: { type: 'LineString', coordinates: line },
+        geometry: { type: 'LineString', coordinates: stroke.line },
       })
     }
 

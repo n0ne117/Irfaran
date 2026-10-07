@@ -897,9 +897,31 @@ class TestDrawingInsideTheReview:
         return int(review.overview(conn)["items"][0]["id"])
 
     def test_a_line_is_kept_with_the_batch(self, conn, held) -> None:
-        detail = review.edit(conn, held, strokes=[STROKE])
-        assert detail["edits"]["strokes"] == [STROKE]
-        assert review.detail(conn, held)["edits"]["strokes"] == [STROKE]
+        line = {"line": STROKE, "radius_m": 35.0}
+        detail = review.edit(conn, held, strokes=[line])
+        assert detail["edits"]["strokes"] == [line]
+        assert review.detail(conn, held)["edits"]["strokes"] == [line]
+
+    def test_a_line_saved_without_a_width_has_the_tracks(self, conn, held) -> None:
+        # How 0.19.13 stored them: the bare list of points.
+        review.edit(conn, held, strokes=[STROKE])
+        stored = review.detail(conn, held)["edits"]["strokes"]
+        assert stored == [
+            {"line": STROKE, "radius_m": common.RADIUS_DEFAULTS_M["overland"]}
+        ]
+
+    def test_the_width_chosen_is_the_width_that_lands(self, conn, held) -> None:
+        review.edit(conn, held, strokes=[{"line": STROKE, "radius_m": 35.0}])
+        review.approve(conn, held)
+        row = conn.execute(
+            "SELECT radius_m FROM events WHERE source = 'manual'"
+        ).fetchone()
+        assert row["radius_m"] == 35.0
+
+    @pytest.mark.parametrize("width", [0, -5, review.STROKE_RADIUS_MAX + 1, "wide"])
+    def test_a_width_that_is_not_one_is_refused(self, conn, held, width) -> None:
+        with pytest.raises(review.ReviewError, match="wide|width"):
+            review.edit(conn, held, strokes=[{"line": STROKE, "radius_m": width}])
 
     def test_nothing_is_written_until_it_is_accepted(self, conn, held) -> None:
         review.edit(conn, held, strokes=[STROKE])

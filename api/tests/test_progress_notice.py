@@ -964,7 +964,7 @@ class TestDrawingInsideTheReview:
         body = body_of(source("review.ts"), "  private handOver(")
         assert "this.map.jumpTo(" in body
         assert "Math.max(MIN_DRAW_ZOOM" in body
-        assert body.index("this.map.jumpTo(") < body.index("this.setDrawTool('line')")
+        assert body.index("this.map.jumpTo(") < body.index("this.setDrawTool('freehand')")
 
     def test_only_a_cut_gap_offers_it(self) -> None:
         body = body_of(source("review.ts"), "  private paintGaps(")
@@ -978,6 +978,33 @@ class TestDrawingInsideTheReview:
     def test_a_save_carries_the_lines(self) -> None:
         body = body_of(source("review.ts"), "  private async saveNow(")
         assert "strokes: this.strokes" in body
+
+    def test_the_review_has_a_bar_of_its_own(self) -> None:
+        # Reported as: "Draw it still moves the map". Point to point pans on a
+        # drag by design, and nothing on screen said which mode was on. The
+        # bar says it: drag the map, or draw - and how wide.
+        markup = (WEB / "index.html").read_text()
+        bar = markup[markup.index('id="review-draw-bar"') :]
+        bar = bar[: bar.index('id="review-draw-hint"')]
+        assert 'data-value="off"' in bar and 'data-value="freehand"' in bar
+        assert 'data-value="line"' not in bar
+        assert 'id="review-draw-size"' in bar
+
+    def test_each_line_keeps_the_width_it_was_drawn_at(self) -> None:
+        body = body_of(source("review.ts"), "  private addStroke(")
+        assert "radius_m: this.radius" in body
+
+    def test_a_line_carries_on_from_the_last_one(self) -> None:
+        body = body_of(source("review.ts"), "  private snap(")
+        assert "stroke.line[stroke.line.length - 1]" in body
+
+    def test_a_new_width_reaches_an_armed_brush(self) -> None:
+        body = body_of(source("review.ts"), "  private setRadius(")
+        assert "this.startDrawing(" in body
+
+    def test_the_bar_goes_with_the_batch(self) -> None:
+        body = body_of(source("review.ts"), "  private closeOne(")
+        assert body.index("this.current = null") < body.index("this.paintDrawTools()")
 
     def test_the_lines_have_their_own_colour(self) -> None:
         body = body_of(source("review.ts"), "attach(): void {")

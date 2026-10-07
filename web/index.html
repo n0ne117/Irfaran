@@ -82,6 +82,40 @@
       <span id="search-hint" class="bar-hint"></span>
     </div>
 
+    <!-- Drawing inside a review. A smaller sibling of the draw bar - the
+         review's sidebar covers the map tools, and this offers only what
+         filling a gap needs: draw, pan, and how wide. -->
+    <div id="review-draw-bar" class="draw-stack review-draw-bar" hidden>
+      <div class="draw-tools">
+        <div id="review-draw-tool" class="segmented" role="group" aria-label="Review drawing tool">
+          <button type="button" data-value="off" aria-pressed="true" title="Drag the map">
+            <span class="tool-icon" data-icon="move"></span> Drag map
+          </button>
+          <button type="button" data-value="freehand" aria-pressed="false" title="Draw what the phone missed">
+            Draw
+          </button>
+        </div>
+        <button id="review-draw-zoom-in" type="button" class="bar-button" hidden>
+          Zoom to 14
+        </button>
+        <div class="bar-size" title="How wide the line clears, either side">
+          <button id="review-draw-size-down" type="button" aria-label="Thinner line">&minus;</button>
+          <input
+            id="review-draw-size"
+            type="range"
+            min="1"
+            max="60"
+            step="1"
+            value="20"
+            aria-label="Line width in metres"
+          />
+          <button id="review-draw-size-up" type="button" aria-label="Thicker line">+</button>
+          <output id="review-draw-size-label" for="review-draw-size">20 m</output>
+        </div>
+      </div>
+      <span id="review-draw-hint" class="bar-hint"></span>
+    </div>
+
     <!-- Map tools, top right. The draw bar sits to the left of the buttons so
          it opens leftwards across the map rather than off the edge. -->
     <div class="map-tools">
@@ -331,16 +365,15 @@
 
         <h2>Drawn by hand</h2>
         <p class="hint">
-          Draw what the phone missed, in blue. It stays with this batch and
-          reaches the map only when you add the batch, as hand-drawn lines —
-          the phone's own track stays exactly as it was reported.
+          Draw what the phone missed with the bar above the map, in blue. It
+          stays with this batch and reaches the map only when you add the
+          batch, as hand-drawn lines — the phone's own track stays exactly as
+          it was reported. A line starts and ends on the nearest dot, or on
+          the end of the line before it.
         </p>
         <div class="button-row">
-          <button id="review-draw-freehand" type="button" aria-pressed="false">Freehand</button>
-          <button id="review-draw-line" type="button" aria-pressed="false">Point to point</button>
-          <button id="review-draw-undo" type="button" disabled>Undo</button>
+          <button id="review-draw-undo" type="button" disabled>Undo last line</button>
         </div>
-        <p id="review-draw-hint" class="hint" hidden></p>
         <div id="review-strokes" class="review-gaps" hidden></div>
 
         <h2 id="review-parts-heading">Parts</h2>

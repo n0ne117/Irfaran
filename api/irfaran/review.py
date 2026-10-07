@@ -309,6 +309,24 @@ GAP_LIMIT = 60
 STROKE_LIMIT = 100
 STROKE_POINTS = 5000
 
+#: The widest a drawn line may be, in metres either side. The world map's
+#: brush stops at 60; this leaves room without letting a typo clear a county.
+STROKE_RADIUS_MAX = 500.0
+
+
+@dataclass(frozen=True)
+class Stroke:
+    """One line drawn inside a review."""
+
+    line: tuple[tuple[float, float], ...]
+    #: Metres either side. None for a line saved before the width could be
+    #: chosen, which lands at the track's width - what it was drawn at then.
+    radius_m: float | None = None
+
+    def as_dict(self, default_radius: float | None = None) -> dict[str, object]:
+        radius = self.radius_m if self.radius_m is not None else default_radius
+        return {"line": [list(point) for point in self.line], "radius_m": radius}
+
 
 @dataclass
 class Edits:
@@ -331,7 +349,7 @@ class Edits:
     #: are not fixes and never join the phone's track: accepting writes each
     #: one as a hand-drawn event of its own, so the log says which part the
     #: phone reported and which part somebody drew.
-    strokes: tuple[tuple[tuple[float, float], ...], ...] = ()
+    strokes: tuple[Stroke, ...] = ()
 
     @classmethod
     def load(cls, raw: str | None) -> "Edits":
@@ -354,10 +372,7 @@ class Edits:
             dropped=indexes("dropped"),
             cuts=indexes("cuts"),
             joins=indexes("joins"),
-            strokes=tuple(
-                tuple((float(lon), float(lat)) for lon, lat in stroke)
-                for stroke in stored.get("strokes") or ()
-            ),
+            strokes=_strokes(stored.get("strokes") or ()),
         )
 
     def dump(self) -> str:
@@ -369,7 +384,7 @@ class Edits:
                 "dropped": list(self.dropped),
                 "cuts": list(self.cuts),
                 "joins": list(self.joins),
-                "strokes": [[list(point) for point in stroke] for stroke in self.strokes],
+                "strokes": [stroke.as_dict() for stroke in self.strokes],
             },
             separators=(",", ":"),
         )
@@ -844,7 +859,9 @@ def detail(conn: sqlite3.Connection, review_id: int) -> dict[str, object]:
             "dropped": list(edits.dropped),
             "cuts": list(edits.cuts),
             "joins": list(edits.joins),
-            "strokes": [[list(point) for point in stroke] for stroke in edits.strokes],
+            "strokes": [
+                stroke.as_dict(_drawn_radius(source)) for stroke in edits.strokes
+            ],
         },
         # The width a line drawn in this review will be written at, so the
         # brush ring on screen is the width that will land.
@@ -1008,16 +1025,37 @@ def _boundaries(values: Iterable[int], total: int, what: str) -> tuple[int, ...]
     return tuple(sorted(out))
 
 
-def _strokes(values: Iterable[object]) -> tuple[tuple[tuple[float, float], ...], ...]:
-    """Hand-drawn lines, checked the way a drawn event would be."""
-    out: list[tuple[tuple[float, float], ...]] = []
+def _strokes(values: Iterable[object]) -> tuple[Stroke, ...]:
+    """Hand-drawn lines, checked the way a drawn event would be.
+
+    Each is {"line": [[lon, lat], ...], "radius_m": metres}, or - as 0.19.13
+    stored them, before a line had a width of its own - the bare list.
+    """
+    out: list[Stroke] = []
     for number, stroke in enumerate(values, start=1):
-        if not isinstance(stroke, (list, tuple)) or not 2 <= len(stroke) <= STROKE_POINTS:
+        radius: float | None = None
+        line = stroke
+        if isinstance(stroke, dict):
+            line = stroke.get("line")
+            given = stroke.get("radius_m")
+            if given is not None:
+                try:
+                    radius = float(given)
+                except (TypeError, ValueError) as exc:
+                    raise ReviewError(
+                        f"Drawn line {number} has a width that is not a number."
+                    ) from exc
+                if not 0.0 < radius <= STROKE_RADIUS_MAX:
+                    raise ReviewError(
+                        f"Drawn line {number} is {radius:g} m wide; a line is "
+                        f"more than 0 and at most {STROKE_RADIUS_MAX:g} m."
+                    )
+        if not isinstance(line, (list, tuple)) or not 2 <= len(line) <= STROKE_POINTS:
             raise ReviewError(
                 f"Drawn line {number} needs between 2 and {STROKE_POINTS} points."
             )
         points: list[tuple[float, float]] = []
-        for point in stroke:
+        for point in line:
             try:
                 lon, lat = (float(value) for value in point)  # type: ignore[union-attr]
             except (TypeError, ValueError) as exc:
@@ -1029,7 +1067,7 @@ def _strokes(values: Iterable[object]) -> tuple[tuple[tuple[float, float], ...],
                     f"Drawn line {number} has a point off the planet: {lon}, {lat}."
                 )
             points.append((lon, lat))
-        out.append(tuple(points))
+        out.append(Stroke(tuple(points), radius))
     if len(out) > STROKE_LIMIT:
         raise ReviewError(
             f"{len(out)} drawn lines is more than one review holds ({STROKE_LIMIT})."
@@ -1182,21 +1220,20 @@ def _write_strokes(
 
     Manual events, through the same store and stamp a file import uses, so a
     rebuild treats them like any other stroke. Two things are taken from the
-    track rather than from the brush: the year, because a piece filling a hole
-    in a 2026 day belongs to 2026 and not to prehistory, and the width, so the
-    cleared strip does not narrow where the phone's track hands over to the
-    drawn piece.
+    track: the year, because a piece filling a hole in a 2026 day belongs to
+    2026 and not to prehistory. The width is the one chosen on the review's
+    toolbar, which starts at the track's own so the cleared strip does not
+    narrow where the phone's track hands over to the drawn piece.
     """
     if not edits.strokes:
         return
     layer = common.layer_for(kept)
-    radius = _drawn_radius(source)
     for stroke in edits.strokes:
         event_id = common.store_segment(
             conn,
             source="manual",
-            fixes=[common.Fix(lon=lon, lat=lat) for lon, lat in stroke],
-            radius_m=radius,
+            fixes=[common.Fix(lon=lon, lat=lat) for lon, lat in stroke.line],
+            radius_m=stroke.radius_m if stroke.radius_m is not None else _drawn_radius(source),
             layers=[layer],
             external_id=None,
             meta={"drawn_for": decision.title},

@@ -2270,11 +2270,14 @@ kbd {
   gap: 0.25rem;
 }
 
-/* The review's two drawing tools. Lit while armed, the way the toolbar's are,
-   so the map is never in drawing mode with nothing saying so. */
-#review-one button[aria-pressed='true'] {
-  background: var(--accent);
-  color: var(--accent-fg);
+/* Drawing inside a review: the draw bar's smaller sibling, top right of the
+   map that is left beside the sidebar. Above the map tools, which the sidebar
+   covers anyway, and below the sidebar itself. */
+.review-draw-bar {
+  position: absolute;
+  top: 0.75rem;
+  right: calc(min(22rem, 92vw) + 0.75rem);
+  z-index: 4;
 }
 
 /* ---------------------------------------------------------------- scale bar */
@@ -2816,5 +2819,11 @@ body[data-token='missing'] #review-badge {
     border-color: var(--accent);
     background: var(--accent);
     color: var(--accent-fg);
+  }
+
+  /* The review is a full-screen panel on a phone, so there is no map beside
+     it to draw on. Hidden rather than left floating over the panel. */
+  .review-draw-bar {
+    display: none;
   }
 }
