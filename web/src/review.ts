@@ -23,6 +23,14 @@ const SOURCE = 'irfaran-review'
 const KEEP_LAYER = 'irfaran-review-keep'
 const DROP_LAYER = 'irfaran-review-drop'
 const ENDS_LAYER = 'irfaran-review-ends'
+const FIXES_LAYER = 'irfaran-review-fixes'
+
+/**
+ * A stretch this short is a dot rather than a line. One point drew as a line of
+ * no length, which is nothing at all: a train day had seven of them, each a
+ * position the phone did report, and none of them on the map.
+ */
+const ALONE_POINTS = 3
 
 /** How often the badge asks. Rare on purpose: nothing here is urgent. */
 const POLL_MS = 15_000
@@ -87,8 +95,11 @@ interface Gap {
 }
 
 interface Detail extends Waiting {
-  /** [lon, lat, ISO 8601 | null] per point, exactly as it was received. */
-  fixes: [number, number, string | null][]
+  /**
+   * [lon, lat, ISO 8601 | null, accuracy in metres | null, motion | null] per
+   * point, exactly as it was received. Older batches stop after the time.
+   */
+  fixes: [number, number, string | null, (number | null)?, (string | null)?][]
   segments: Segment[]
   gaps: Gap[]
   edits: {
@@ -232,6 +243,37 @@ export class Review {
     if (this.map.getSource(SOURCE)) return
     this.map.addSource(SOURCE, { type: 'geojson', data: EMPTY as never })
 
+    // Every fix, under the line. Along a dense trace it is a fringe either
+    // side, coloured by how sure the phone was; where there is no line - a
+    // fix between two cuts - it is the only thing on the map. The colours
+    // stop at 50 m because anything coarser never got this far.
+    this.map.addLayer({
+      id: FIXES_LAYER,
+      type: 'circle',
+      source: SOURCE,
+      filter: ['==', ['get', 'fix'], true],
+      paint: {
+        'circle-radius': [
+          'interpolate', ['linear'], ['zoom'],
+          6, ['case', ['get', 'alone'], 4, 2],
+          14, ['case', ['get', 'alone'], 6, 3.5],
+          18, ['case', ['get', 'alone'], 8, 5],
+        ],
+        'circle-color': [
+          'case',
+          ['!', ['has', 'accuracy']], '#b8b8c0',
+          ['<=', ['get', 'accuracy'], 10], '#6cc4a1',
+          ['<=', ['get', 'accuracy'], 25], '#e8c547',
+          '#d9534f',
+        ],
+        'circle-opacity': ['case', ['get', 'keep'], 0.9, 0.35],
+        'circle-stroke-width': ['case', ['get', 'alone'], 1.5, 0],
+        // White, not the ends' black: a lone red fix outlined in black is
+        // the end marker, and the end is exactly what it would be taken for.
+        'circle-stroke-color': '#ffffffcc',
+      },
+    })
+
     // What is being left out, underneath and dashed, rather than removed from
     // the drawing entirely. Seeing what a trim discards is the only way to
     // know the trim is in the right place.
@@ -266,7 +308,7 @@ export class Review {
       id: ENDS_LAYER,
       type: 'circle',
       source: SOURCE,
-      filter: ['==', ['geometry-type'], 'Point'],
+      filter: ['has', 'start'],
       paint: {
         'circle-radius': 5,
         'circle-color': ['case', ['==', ['get', 'start'], true], '#5ad18a', '#e2604f'],
@@ -692,7 +734,9 @@ export class Review {
     const { from, to } = this.trimmed
     const dropped = this.dropped
     const owner = new Map<number, number>()
+    const alone = new Set<number>()
     for (const segment of detail.segments) {
+      if (segment.points <= ALONE_POINTS) alone.add(segment.begin)
       for (let index = segment.begin; index <= segment.end; index += 1) {
         owner.set(index, segment.begin)
       }
@@ -756,6 +800,18 @@ export class Review {
         runSegment = segment
       }
       run.push(point)
+
+      const accuracy = fix[3]
+      features.push({
+        type: 'Feature',
+        properties: {
+          fix: true,
+          keep,
+          alone: alone.has(segment),
+          ...(typeof accuracy === 'number' ? { accuracy } : {}),
+        },
+        geometry: { type: 'Point', coordinates: point },
+      })
     }
     flush(null)
 

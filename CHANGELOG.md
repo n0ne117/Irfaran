@@ -11,6 +11,13 @@ Entries are written for someone reading the release page, not for someone readin
 
 Nothing yet.
 
+## [0.19.12] - 2026-10-07
+
+### Fixed
+- **Every position a phone reported is on the review map.** A stretch was drawn only as a line, so a fix with a cut either side — a stretch of one point — was a line of no length, which is nothing. On a train with bad signal that is most of what survives: a test day with two train rides had five one-point stretches and two more of two or three points, every one of them a position the phone did report, none of them visible. Each fix is now a dot under the line, and a stretch of three points or fewer is a larger, outlined one that cannot be missed.
+
+  The dot is coloured by the accuracy the phone reported — green within 10 m, yellow within 25, red within 50, grey when the source said nothing. It stops at 50 because anything coarser is dropped on arrival and never reaches the review at all. Along a dense trace the dots are a thin fringe either side of the line; where there is no line, they are the only thing there.
+
 ## [0.19.11] - 2026-10-07
 
 ### Fixed

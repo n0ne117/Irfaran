@@ -846,6 +846,44 @@ class TestTheReviewPreview:
         assert "this.redraw()" in text and "this.later()" in text
 
 
+class TestEveryFixIsOnTheReviewMap:
+    """Reported as: on a train day the points are not even displayed.
+
+    A fix between two cuts is a stretch of one point, and a stretch was drawn
+    only as a line - one point long, which is nothing. 2026-09-24 had seven
+    stretches of three points or fewer, every one of them invisible.
+    """
+
+    def test_every_fix_becomes_a_point(self) -> None:
+        body = body_of(source("review.ts"), "private redraw(")
+        assert "fix: true" in body
+        assert "alone: alone.has(segment)" in body
+
+    def test_the_dots_have_their_own_layer_under_the_line(self) -> None:
+        body = body_of(source("review.ts"), "attach(): void {")
+        fixes = body.index("id: FIXES_LAYER")
+        assert fixes < body.index("id: DROP_LAYER") < body.index("id: KEEP_LAYER")
+        assert "['==', ['get', 'fix'], true]" in body
+
+    def test_the_ends_do_not_pick_the_fixes_up(self) -> None:
+        # The ends were every Point in the source, which every fix now is.
+        body = body_of(source("review.ts"), "attach(): void {")
+        ends = body[body.index("id: ENDS_LAYER") :]
+        assert "['has', 'start']" in ends
+        assert "geometry-type" not in ends
+
+    def test_the_colour_is_the_accuracy(self) -> None:
+        body = body_of(source("review.ts"), "attach(): void {")
+        layer = body[body.index("id: FIXES_LAYER") : body.index("id: DROP_LAYER")]
+        assert "['get', 'accuracy']" in layer
+        # No accuracy is a colour of its own, not the best one.
+        assert "['!', ['has', 'accuracy']]" in layer
+
+    def test_the_key_is_on_the_page(self) -> None:
+        markup = (WEB / "index.html").read_text()
+        assert 'class="hint review-fix-key"' in markup
+
+
 class TestAcceptingATrackShowsOnTheBar:
     """Reported as: accepting a track draws the map and the bar never moves.
 
