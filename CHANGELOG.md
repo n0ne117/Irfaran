@@ -11,6 +11,18 @@ Entries are written for someone reading the release page, not for someone readin
 
 Nothing yet.
 
+## [0.19.15] - 2026-10-07
+
+### Added
+- **Points can be left out by hand in the review.** In *Drag map*, click a dot to pick it, shift-click another to pick everything between, and *Leave out* — or press Delete. *Put back* undoes it for whatever is picked, and *Undo edits* for all of it. The picked dots wear a white ring and keep their accuracy colour.
+
+  What happens to the line where they were is decided the same way on screen and on the map. If the two dots either side are within 250 m, the line closes up behind the gap — a GPS spike taken out of a good trace, and the trace runs straight on. If they are further apart, it breaks there, because a straight line across a train's worth of junk is the one route nobody took; draw across it instead. 250 m is the distance the existing split rule already ignores a jump below.
+
+  As with everything in a review, the phone's points are never changed: leaving one out is a note beside the batch, and what lands is what the phone reported, minus what was left out.
+
+### Changed
+- **What a trim leaves behind is drawn more honestly.** The kept line used to start one point early, on the last point trimmed away; the dashed line for what is left out now reaches to the kept point instead, and the kept line starts where the kept points do.
+
 ## [0.19.14] - 2026-10-07
 
 ### Changed

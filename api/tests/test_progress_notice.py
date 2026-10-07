@@ -1012,6 +1012,41 @@ class TestDrawingInsideTheReview:
         assert "['==', ['get', 'stroke'], true]" in body
 
 
+class TestLeavingPointsOutOnTheMap:
+    """Pick a dot, shift-click a range, leave them out. The preview has to be
+    what lands, so the rule that closes a hole is the server's, mirrored."""
+
+    def test_the_hole_rule_is_the_servers(self) -> None:
+        from irfaran import review
+
+        text = source("review.ts")
+        assert f"const HEAL_METRES = {review.HEAL_METRES:g}" in text
+        body = body_of(text, "private redraw(")
+        assert "const closes = (previous: number, index: number): boolean => {" in body
+        assert "owner.get(previous) !== owner.get(index)" in body
+        assert "this.removed.has(between)" in body
+
+    def test_a_save_carries_them(self) -> None:
+        body = body_of(source("review.ts"), "  private async saveNow(")
+        assert "removed: [...this.removed]" in body
+
+    def test_picking_waits_for_drag_map(self) -> None:
+        # With Draw armed a press is a line, not a pick.
+        text = source("review.ts")
+        handler = text[text.index("this.map.on('click', (event) => {") :][:200]
+        assert "this.drawTool !== 'off'" in handler
+
+    def test_delete_is_not_stolen_from_a_text_field(self) -> None:
+        text = source("review.ts")
+        keys = text[text.index("document.addEventListener('keydown'") :][:400]
+        assert "INPUT|TEXTAREA|SELECT" in keys
+
+    def test_a_pick_is_a_ring(self) -> None:
+        body = body_of(source("review.ts"), "attach(): void {")
+        assert "id: PICKED_LAYER" in body
+        assert "['==', ['get', 'picked'], true]" in body
+
+
 class TestALineLongerThanTheScreen:
     """Point to point used to switch panning off from the first vertex to the
     last, so the screen was the longest line that could be drawn. A train ride

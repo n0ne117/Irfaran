@@ -26,6 +26,7 @@ const DROP_LAYER = 'irfaran-review-drop'
 const ENDS_LAYER = 'irfaran-review-ends'
 const FIXES_LAYER = 'irfaran-review-fixes'
 const STROKES_LAYER = 'irfaran-review-strokes'
+const PICKED_LAYER = 'irfaran-review-picked'
 
 /**
  * Drag the map, or draw. Nothing else: areas and Re-Fog are not filling a gap,
@@ -49,6 +50,16 @@ interface Stroke {
   line: Coordinate[]
   radius_m: number
 }
+
+/**
+ * Points left out by hand close up behind them when their neighbours are at
+ * most this far apart. The server's HEAL_METRES, mirrored so the preview is
+ * what lands.
+ */
+const HEAL_METRES = 250
+
+/** How far from a dot, in screen pixels, a click still picks it. */
+const PICK_PX = 8
 
 /** The review bar's width slider, in metres either side. */
 const RADIUS_MIN = 1
@@ -138,6 +149,7 @@ interface Detail extends Waiting {
     dropped: number[]
     cuts: number[]
     joins: number[]
+    removed: number[]
     strokes: Stroke[]
   }
   /** How wide a line drawn here will be: the track's width, not the brush's. */
@@ -247,6 +259,11 @@ export class Review {
   private joins = new Set<number>()
   /** Lines drawn in this review, mirrored so a save carries them. */
   private strokes: Stroke[] = []
+  /** Single points left out by hand, by index. */
+  private removed = new Set<number>()
+  /** Points picked on the map, and where a shift-click range starts. */
+  private picked = new Set<number>()
+  private anchor: number | null = null
   private drawTool: ReviewTool = 'off'
   /** The width the next line is drawn at. Starts at the track's own. */
   private radius = 20
@@ -372,6 +389,20 @@ export class Review {
         'circle-stroke-color': '#000000aa',
       },
     })
+    // What is picked. A ring rather than a colour, so a picked dot still says
+    // how accurate it was.
+    this.map.addLayer({
+      id: PICKED_LAYER,
+      type: 'circle',
+      source: SOURCE,
+      filter: ['==', ['get', 'picked'], true],
+      paint: {
+        'circle-radius': ['interpolate', ['linear'], ['zoom'], 6, 5, 14, 8, 18, 10],
+        'circle-color': 'rgba(0, 0, 0, 0)',
+        'circle-stroke-width': 2.5,
+        'circle-stroke-color': '#ffffff',
+      },
+    })
   }
 
   private paint(collection: unknown): void {
@@ -439,6 +470,27 @@ export class Review {
     element('review-draw-zoom-in').addEventListener('click', () =>
       this.map.easeTo({ zoom: MIN_DRAW_ZOOM }),
     )
+    // Picking points. Only in Drag map: with Draw armed a press is a line.
+    this.map.on('click', (event) => {
+      if (!this.current || this.drawTool !== 'off') return
+      const original = event.originalEvent as MouseEvent
+      this.pick(event.point, original.shiftKey)
+    })
+    document.addEventListener('keydown', (event) => {
+      if (!this.current || element('review-page').hidden) return
+      const target = event.target as HTMLElement | null
+      if (target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return
+      if ((event.key === 'Delete' || event.key === 'Backspace') && this.picked.size) {
+        event.preventDefault()
+        this.leaveOut(true)
+      } else if (event.key === 'Escape' && this.picked.size) {
+        this.clearPicked()
+      }
+    })
+    element('review-pick-out').addEventListener('click', () => this.leaveOut(true))
+    element('review-pick-back').addEventListener('click', () => this.leaveOut(false))
+    element('review-pick-clear').addEventListener('click', () => this.clearPicked())
+
     element('review-draw-undo').addEventListener('click', () =>
       this.removeStroke(this.strokes.length - 1),
     )
@@ -586,6 +638,9 @@ export class Review {
     element<HTMLInputElement>('review-name').value = detail.title
     this.cuts = new Set(detail.edits.cuts)
     this.joins = new Set(detail.edits.joins)
+    this.removed = new Set(detail.edits.removed ?? [])
+    this.picked.clear()
+    this.anchor = null
     this.strokes = (detail.edits.strokes ?? []).map((stroke) => ({
       line: stroke.line.map((point): Coordinate => [point[0], point[1]]),
       radius_m: stroke.radius_m,
@@ -603,6 +658,7 @@ export class Review {
     this.paintSegments(detail)
     this.paintStrokes()
     this.paintDrawTools()
+    this.paintPicked()
   }
 
   /**
@@ -722,6 +778,89 @@ export class Review {
   }
 
   // ------------------------------------------------------- drawing by hand
+
+  // ---------------------------------------------------------- picking points
+
+  /**
+   * Pick the dot nearest a click. Shift picks everything from the last pick
+   * to this one - a station's worth of junk is one shift-click, not forty.
+   * A click on nothing lets go of what was picked.
+   */
+  private pick(point: { x: number; y: number }, range: boolean): void {
+    const hits = this.map.queryRenderedFeatures(
+      [
+        [point.x - PICK_PX, point.y - PICK_PX],
+        [point.x + PICK_PX, point.y + PICK_PX],
+      ],
+      { layers: [FIXES_LAYER] },
+    )
+    let best: number | null = null
+    let bestPx = Infinity
+    for (const hit of hits) {
+      const index = Number(hit.properties?.index)
+      const fix = this.current?.fixes[index]
+      if (!fix) continue
+      const there = this.map.project([fix[0], fix[1]])
+      const px = Math.hypot(there.x - point.x, there.y - point.y)
+      if (px < bestPx) {
+        bestPx = px
+        best = index
+      }
+    }
+
+    if (best === null) {
+      if (!range) this.clearPicked()
+      return
+    }
+    if (range && this.anchor !== null) {
+      const [low, high] = this.anchor < best ? [this.anchor, best] : [best, this.anchor]
+      for (let index = low; index <= high; index += 1) this.picked.add(index)
+    } else if (this.picked.has(best) && this.picked.size === 1) {
+      this.picked.clear()
+    } else {
+      this.picked = new Set([best])
+    }
+    this.anchor = best
+    this.paintPicked()
+    this.redraw()
+  }
+
+  private clearPicked(): void {
+    this.picked.clear()
+    this.anchor = null
+    this.paintPicked()
+    this.redraw()
+  }
+
+  /** Leave the picked points out, or put them back. Then let go of them. */
+  private leaveOut(out: boolean): void {
+    if (!this.picked.size) return
+    for (const index of this.picked) {
+      if (out) this.removed.add(index)
+      else this.removed.delete(index)
+    }
+    this.picked.clear()
+    this.anchor = null
+    this.paintPicked()
+    this.redraw()
+    void this.queue()
+  }
+
+  private paintPicked(): void {
+    const count = this.picked.size
+    let out = 0
+    for (const index of this.picked) if (this.removed.has(index)) out += 1
+
+    element('review-pick-note').textContent = !count
+      ? this.removed.size
+        ? `${this.removed.size.toLocaleString()} left out by hand.`
+        : 'Nothing picked.'
+      : `${count.toLocaleString()} picked` +
+        (out ? `, ${out.toLocaleString()} of them already left out.` : '.')
+    element<HTMLButtonElement>('review-pick-out').disabled = !count || out === count
+    element<HTMLButtonElement>('review-pick-back').disabled = !out
+    element<HTMLButtonElement>('review-pick-clear').disabled = !count
+  }
 
   private setDrawTool(tool: ReviewTool): void {
     const detail = this.current
@@ -921,6 +1060,8 @@ export class Review {
 
   private closeOne(): void {
     this.setDrawTool('off')
+    this.picked.clear()
+    this.anchor = null
     this.current = null
     this.paintDrawTools()
     element('review-one').hidden = true
@@ -984,77 +1125,108 @@ export class Review {
     }
 
     const features: unknown[] = []
-    let run: [number, number][] = []
-    let runKeep = false
-    let runSegment = -1
+    const fixes = detail.fixes
+    const at = (index: number): Coordinate => [fixes[index][0], fixes[index][1]]
+    const keep = fixes.map(
+      (_, index) =>
+        index >= from &&
+        index <= to &&
+        !dropped.has(owner.get(index) ?? 0) &&
+        !this.removed.has(index),
+    )
 
-    const flush = (carry: [number, number] | null) => {
-      if (run.length === 0) {
-        run = carry ? [carry] : []
-        return
+    // Whether two kept points are one line - the server's _closes, so what is
+    // drawn here is what lands. Never across a part boundary; across a hole
+    // only if every point in it was left out by hand and the two ends are
+    // close enough that the straight line is the route.
+    const closes = (previous: number, index: number): boolean => {
+      if (owner.get(previous) !== owner.get(index)) return false
+      if (index === previous + 1) return true
+      for (let between = previous + 1; between < index; between += 1) {
+        if (!this.removed.has(between)) return false
       }
-      features.push({
-        type: 'Feature',
-        properties: { keep: runKeep },
-        geometry: {
-          type: 'LineString',
-          coordinates: run.length === 1 ? [run[0], run[0]] : run,
-        },
-      })
-      // The two runs share the point where they meet. Without it a trim opens
-      // a visible gap in the line exactly where it cuts, which reads as data
-      // missing rather than as a boundary.
-      run = carry ? [carry] : []
+      return haversine(at(previous), at(index)) <= HEAL_METRES
     }
 
-    let keptFirst: [number, number] | null = null
-    let keptLast: [number, number] | null = null
+    const line = (coordinates: Coordinate[], kept: boolean) => {
+      features.push({
+        type: 'Feature',
+        properties: { keep: kept },
+        geometry: {
+          type: 'LineString',
+          coordinates: coordinates.length === 1 ? [coordinates[0], coordinates[0]] : coordinates,
+        },
+      })
+    }
+
+    // What lands, as runs of kept points.
+    let keptFirst: Coordinate | null = null
+    let keptLast: Coordinate | null = null
     let keptCount = 0
     let keptMetres = 0
-    let previousKept: [number, number] | null = null
-    let previousKeptSegment = -1
+    let run: Coordinate[] = []
+    let previous: number | null = null
+    for (let index = 0; index < fixes.length; index += 1) {
+      if (!keep[index]) continue
+      const point = at(index)
+      keptCount += 1
+      if (!keptFirst) keptFirst = point
+      keptLast = point
+      if (previous !== null && closes(previous, index)) {
+        keptMetres += haversine(at(previous), point)
+        run.push(point)
+      } else {
+        if (run.length) line(run, true)
+        run = [point]
+      }
+      previous = index
+    }
+    if (run.length) line(run, true)
 
-    for (let index = 0; index < detail.fixes.length; index += 1) {
-      const fix = detail.fixes[index]
-      const point: [number, number] = [fix[0], fix[1]]
+    // What is left behind, dashed underneath, reaching to the kept points
+    // either side so a trim or a hole reads as a boundary rather than as data
+    // missing. Never across a part boundary, which is the flight.
+    let left: Coordinate[] = []
+    let leftOwner = -1
+    const closeLeft = (next: number | null) => {
+      if (!left.length) return
+      if (next !== null && keep[next] && owner.get(next) === leftOwner) left.push(at(next))
+      line(left, false)
+      left = []
+    }
+    for (let index = 0; index < fixes.length; index += 1) {
       const segment = owner.get(index) ?? 0
-      const keep = index >= from && index <= to && !dropped.has(segment)
-
-      if (keep) {
-        keptCount += 1
-        if (!keptFirst) keptFirst = point
-        keptLast = point
-        if (previousKept && previousKeptSegment === segment) {
-          keptMetres += haversine(previousKept, point)
+      if (keep[index]) {
+        closeLeft(index)
+        continue
+      }
+      if (left.length && segment !== leftOwner) closeLeft(null)
+      if (!left.length) {
+        leftOwner = segment
+        if (index > 0 && keep[index - 1] && owner.get(index - 1) === segment) {
+          left.push(at(index - 1))
         }
-        previousKept = point
-        previousKeptSegment = segment
       }
+      left.push(at(index))
+    }
+    closeLeft(null)
 
-      if (keep !== runKeep || segment !== runSegment) {
-        // Carried across a change of kept-ness, but never across a segment
-        // boundary: the gap between two segments is the whole reason they are
-        // two, and bridging it would draw a line over the flight.
-        const joins = index > 0 && segment === runSegment
-        flush(joins ? (run[run.length - 1] ?? null) : null)
-        runKeep = keep
-        runSegment = segment
-      }
-      run.push(point)
-
+    fixes.forEach((fix, index) => {
+      const segment = owner.get(index) ?? 0
       const accuracy = fix[3]
       features.push({
         type: 'Feature',
         properties: {
           fix: true,
-          keep,
+          index,
+          keep: keep[index],
           alone: alone.has(segment),
+          picked: this.picked.has(index),
           ...(typeof accuracy === 'number' ? { accuracy } : {}),
         },
-        geometry: { type: 'Point', coordinates: point },
+        geometry: { type: 'Point', coordinates: at(index) },
       })
-    }
-    flush(null)
+    })
 
     for (const [point, start] of [
       [keptFirst, true],
@@ -1189,6 +1361,7 @@ export class Review {
       dropped: [...this.dropped],
       cuts: [...this.cuts],
       joins: [...this.joins],
+      removed: [...this.removed],
       strokes: this.strokes,
     }
 
@@ -1210,6 +1383,7 @@ export class Review {
       this.cuts.clear()
       this.joins.clear()
       this.strokes = []
+      this.removed.clear()
       const fresh = await apiSend<Detail>('POST', `/api/review/${detail.id}/reset`)
       this.current = fresh
       this.paintOne(fresh)

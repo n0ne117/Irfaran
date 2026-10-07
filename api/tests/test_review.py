@@ -1002,3 +1002,71 @@ class TestDrawingInsideTheReview:
         assert done.json()["drawn"] == 1
         sources = [event["source"] for event in client.get("/api/events").json()["events"]]
         assert sorted(sources) == ["manual", "overland"]
+
+
+class TestLeavingPointsOut:
+    """A spike, or a station's worth of junk, taken out by hand.
+
+    Unlike a dropped part, the hole can close up behind it: a few metres out
+    of a good trace should run straight on, and kilometres of train should
+    not be crossed by a straight line nobody travelled. STEP is about 13 m.
+    """
+
+    @pytest.fixture
+    def held(self, conn) -> int:
+        review.hold_fixes(conn, "overland", fixes(40))
+        return int(review.overview(conn)["items"][0]["id"])
+
+    def test_a_point_left_out_is_not_added(self, conn, held) -> None:
+        detail = review.edit(conn, held, removed=[20])
+        assert detail["keeping"] == 39
+        assert detail["edits"]["removed"] == [20]
+        assert review.approve(conn, held).left_out == 1
+
+    def test_the_stored_batch_is_not_touched(self, conn, held) -> None:
+        stored = "SELECT fixes FROM review WHERE id = ?"
+        before = conn.execute(stored, (held,)).fetchone()[0]
+        review.edit(conn, held, removed=[3, 4, 5])
+        assert conn.execute(stored, (held,)).fetchone()[0] == before
+
+    def test_a_spike_closes_up(self, conn, held) -> None:
+        review.edit(conn, held, removed=[20, 21])
+        assert review.approve(conn, held).stretches == 1
+
+    def test_a_long_hole_breaks_the_line(self, conn, held) -> None:
+        # Neighbours 4 and 31: 27 steps, about 350 m.
+        review.edit(conn, held, removed=list(range(5, 31)))
+        assert review.approve(conn, held).stretches == 2
+
+    def test_a_hole_next_to_a_cut_stays_cut(self, conn, held) -> None:
+        review.edit(conn, held, removed=[20], cuts=[21])
+        assert review.approve(conn, held).stretches == 2
+
+    def test_a_hole_with_a_cut_inside_it_stays_cut(self, conn, held) -> None:
+        review.edit(conn, held, removed=[20, 21], cuts=[21])
+        assert review.approve(conn, held).stretches == 2
+
+    def test_a_trimmed_end_is_not_healed_into(self, conn, held) -> None:
+        # Leaving points out never changes what a trim or a drop means.
+        stamps = review.boundary_stamps(fixes(40), [0, 1, 2, 10, 11], [], removed=())
+        assert len(stamps) == 1
+
+    def test_reset_puts_them_back(self, conn, held) -> None:
+        review.edit(conn, held, removed=[20])
+        assert review.reset(conn, held)["edits"]["removed"] == []
+
+    def test_a_point_that_is_not_there_is_refused(self, conn, held) -> None:
+        with pytest.raises(review.ReviewError, match="40 points"):
+            review.edit(conn, held, removed=[40])
+
+    def test_the_first_point_may_go(self, conn, held) -> None:
+        detail = review.edit(conn, held, removed=[0])
+        assert detail["keeping"] == 39
+
+    def test_the_endpoint_takes_them(self, client) -> None:
+        enable(client, "overland")
+        post(client, 12)
+        held = client.get("/api/review").json()["items"][0]["id"]
+        edited = client.patch(f"/api/review/{held}", headers=auth(), json={"removed": [3]})
+        assert edited.status_code == 200, edited.text
+        assert edited.json()["keeping"] == 11

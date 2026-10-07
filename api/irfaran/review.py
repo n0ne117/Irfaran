@@ -309,6 +309,14 @@ GAP_LIMIT = 60
 STROKE_LIMIT = 100
 STROKE_POINTS = 5000
 
+#: Points left out by hand close up behind them when their neighbours are at
+#: most this far apart, and break the line when they are further. A GPS spike
+#: on a good trace is a few metres of hole, and the trace should run straight
+#: on; a train's worth of junk is kilometres, and a straight line across it is
+#: exactly the route nobody took. 250 m is the floor the live rule already
+#: uses before a jump counts at all - see live.SETTING_RATIO_METRES.
+HEAL_METRES = 250.0
+
 #: The widest a drawn line may be, in metres either side. The world map's
 #: brush stops at 60; this leaves room without letting a typo clear a county.
 STROKE_RADIUS_MAX = 500.0
@@ -343,6 +351,10 @@ class Edits:
     dropped: tuple[int, ...] = ()
     #: Extra stretch boundaries a person added, where the rule saw nothing.
     cuts: tuple[int, ...] = ()
+    #: Single fixes left out by hand, by index - a spike, a station's worth of
+    #: junk. Unlike a dropped part, the hole they leave can close up again;
+    #: see HEAL_METRES.
+    removed: tuple[int, ...] = ()
     #: Boundaries the rule found and a person disagreed with.
     joins: tuple[int, ...] = ()
     #: Lines drawn by hand inside the review, each a list of [lon, lat]. They
@@ -372,6 +384,7 @@ class Edits:
             dropped=indexes("dropped"),
             cuts=indexes("cuts"),
             joins=indexes("joins"),
+            removed=indexes("removed"),
             strokes=_strokes(stored.get("strokes") or ()),
         )
 
@@ -384,6 +397,7 @@ class Edits:
                 "dropped": list(self.dropped),
                 "cuts": list(self.cuts),
                 "joins": list(self.joins),
+                "removed": list(self.removed),
                 "strokes": [stroke.as_dict() for stroke in self.strokes],
             },
             separators=(",", ":"),
@@ -398,6 +412,7 @@ class Edits:
             or bool(self.dropped)
             or bool(self.cuts)
             or bool(self.joins)
+            or bool(self.removed)
             or bool(self.strokes)
         )
 
@@ -439,14 +454,15 @@ def kept_indexes(
     begin = max(0, min(edits.begin, last))
     end = last if edits.end < 0 else max(begin, min(edits.end, last))
 
+    removed = set(edits.removed)
     if not edits.dropped:
-        return list(range(begin, end + 1))
+        return [index for index in range(begin, end + 1) if index not in removed]
 
     owner = segment_of(fixes, breaks)
     return [
         index
         for index in range(begin, end + 1)
-        if owner[index] not in edits.dropped
+        if owner[index] not in edits.dropped and index not in removed
     ]
 
 
@@ -480,7 +496,10 @@ def segment_ranges(
 
 
 def boundary_stamps(
-    fixes: list[common.Fix], kept: list[int], breaks: Iterable[int]
+    fixes: list[common.Fix],
+    kept: list[int],
+    breaks: Iterable[int],
+    removed: Iterable[int] = (),
 ) -> set[str]:
     """Timestamps of the fixes that start a stretch, in what will be added.
 
@@ -493,19 +512,48 @@ def boundary_stamps(
     or could make: it is about the space between two things, only one of which
     was on screen. That call belongs to the rule, at the moment it lands.
 
+    The one hole that may close up is one made only of points left out by
+    hand, with no boundary inside it and its two neighbours within
+    HEAL_METRES: a spike taken out of a good trace, not a train taken out of a
+    day.
+
     Timestamps rather than indexes because these have to survive the journey
     into live.append, where they are indexes into a different list.
     """
     starts = {index for index in breaks}
+    taken = set(removed)
     out: set[str] = set()
     previous: int | None = None
     for index in kept:
-        if previous is not None and (index != previous + 1 or index in starts):
+        if previous is not None and not _closes(
+            fixes, previous, index, starts, taken
+        ):
             stamp = _stamp(fixes[index])
             if stamp is not None:
                 out.add(stamp)
         previous = index
     return out
+
+
+def _closes(
+    fixes: list[common.Fix],
+    previous: int,
+    index: int,
+    starts: set[int],
+    taken: set[int],
+) -> bool:
+    """Do two consecutive kept fixes belong to the same stretch?"""
+    if any(at in starts for at in range(previous + 1, index + 1)):
+        return False
+    if index == previous + 1:
+        return True
+    if not all(at in taken for at in range(previous + 1, index)):
+        return False
+    before, after = fixes[previous], fixes[index]
+    return (
+        common.haversine_m(before.lon, before.lat, after.lon, after.lat)
+        <= HEAL_METRES
+    )
 
 
 # --------------------------------------------------------------- holding back
@@ -859,6 +907,7 @@ def detail(conn: sqlite3.Connection, review_id: int) -> dict[str, object]:
             "dropped": list(edits.dropped),
             "cuts": list(edits.cuts),
             "joins": list(edits.joins),
+            "removed": list(edits.removed),
             "strokes": [
                 stroke.as_dict(_drawn_radius(source)) for stroke in edits.strokes
             ],
@@ -948,6 +997,7 @@ def edit(
     dropped: Iterable[int] | None = None,
     cuts: Iterable[int] | None = None,
     joins: Iterable[int] | None = None,
+    removed: Iterable[int] | None = None,
     strokes: Iterable[object] | None = None,
 ) -> dict[str, object]:
     """Change what approving would add. Nothing enters the log here."""
@@ -978,6 +1028,8 @@ def edit(
         current.cuts = _boundaries(cuts, total, "cut")
     if joins is not None:
         current.joins = _boundaries(joins, total, "join")
+    if removed is not None:
+        current.removed = _points(removed, total)
     if strokes is not None:
         current.strokes = _strokes(strokes)
 
@@ -1020,6 +1072,22 @@ def _boundaries(values: Iterable[int], total: int, what: str) -> tuple[int, ...]
             raise ReviewError(
                 f"Point {index} cannot carry a {what} - this batch has "
                 f"{total} points, and a stretch cannot start before the first."
+            )
+        out.add(index)
+    return tuple(sorted(out))
+
+
+def _points(values: Iterable[int], total: int) -> tuple[int, ...]:
+    """Fix indexes that may be left out: any of them, the first included."""
+    out: set[int] = set()
+    for value in values:
+        try:
+            index = int(value)
+        except (TypeError, ValueError) as exc:
+            raise ReviewError("A point left out is a point number.") from exc
+        if not 0 <= index < total:
+            raise ReviewError(
+                f"Point {index} cannot be left out - this batch has {total} points."
             )
         out.add(index)
     return tuple(sorted(out))
@@ -1179,7 +1247,7 @@ def approve(conn: sqlite3.Connection, review_id: int) -> Decision:
             source,
             kept,
             meta,
-            breaks_at=boundary_stamps(fixes, keeping, breaks),
+            breaks_at=boundary_stamps(fixes, keeping, breaks, edits.removed),
         )
         decision.events = outcome.stretches or (1 if outcome.accepted else 0)
         decision.stretches = outcome.stretches

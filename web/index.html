@@ -354,6 +354,21 @@
           outlined dot is a stretch too short to draw as a line.
         </p>
 
+        <h2>Points</h2>
+        <p class="hint">
+          In <em>Drag map</em>, click a dot to pick it; shift-click another to
+          pick everything between. Leave out what the phone got wrong —
+          <kbd>Delete</kbd> does the same. Where the dots either side are
+          within 250 m the line closes up behind them; further apart it breaks
+          there, and you can draw across.
+        </p>
+        <p id="review-pick-note" class="hint">Nothing picked.</p>
+        <div class="button-row">
+          <button id="review-pick-out" type="button" disabled>Leave out</button>
+          <button id="review-pick-back" type="button" disabled>Put back</button>
+          <button id="review-pick-clear" type="button" disabled>Let go</button>
+        </div>
+
         <h2 id="review-gaps-heading" hidden>Where it breaks</h2>
         <p id="review-gaps-hint" class="hint" hidden>
           A phone stops reporting and starts again somewhere else. Joining the
