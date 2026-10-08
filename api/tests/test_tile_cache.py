@@ -237,3 +237,51 @@ class TestCorrectness:
         after = rendered.get(deep).headers["etag"]
         assert after != before
         assert rendered.get(deep, headers={"If-None-Match": before}).status_code == 200
+
+
+class TestATileIsNeverReadHalfWritten:
+    """Reported as: "AJAXError: NetworkError (0)" on a trail tile while drawing.
+
+    A stroke re-renders the tiles in view, and the map is fetching those same
+    tiles. Written with write_bytes - empty the file, then fill it - and served
+    with FileResponse - take the size, then stream - a read in between got the
+    length of one file and the body of another, and the connection was cut.
+    """
+
+    def test_the_body_is_as_long_as_it_says(self, rendered):
+        response = rendered.get(TILE)
+        assert int(response.headers["content-length"]) == len(response.content)
+        assert response.content.startswith(b"\x89PNG")
+
+    def test_a_write_replaces_the_tile_in_one_step(self, tmp_path):
+        target = tmp_path / "t" / "1.png"
+        composite.write_tile(target, b"old")
+        composite.write_tile(target, b"new")
+        assert target.read_bytes() == b"new"
+        assert [p.name for p in target.parent.iterdir()] == ["1.png"]
+
+    def test_a_failed_write_leaves_the_old_tile_whole(self, tmp_path, monkeypatch):
+        target = tmp_path / "1.png"
+        composite.write_tile(target, b"old")
+
+        def broken(*_args, **_kwargs):
+            raise OSError("disk full")
+
+        monkeypatch.setattr(composite.os, "replace", broken)
+        with pytest.raises(OSError):
+            composite.write_tile(target, b"new")
+        assert target.read_bytes() == b"old"
+        assert [p.name for p in tmp_path.iterdir()] == ["1.png"], "temporary left behind"
+
+    def test_nothing_writes_a_tile_in_place(self):
+        from pathlib import Path
+
+        text = Path(composite.__file__).read_text()
+        assert "destination.write_bytes(" not in text
+
+    def test_a_tile_gone_between_render_and_read_is_unexplored(self, rendered):
+        path = composite.tile_path(tiles_root(), "dark", "all", "fog", 0, 0, 0)
+        path.unlink()
+        response = rendered.get(TILE)
+        assert response.status_code == 200
+        assert response.headers["etag"] == rendered.app.state.placeholder_etags[("dark", "fog")]

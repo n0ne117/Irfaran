@@ -58,14 +58,14 @@ LEGACY_TOKEN_HEADER = "X-FogMap-Token"
 TILE_CACHE_CONTROL = "public, max-age=300, must-revalidate"
 
 
-def tile_validators(path: Path) -> tuple[str, str]:
+def tile_validators(stat: os.stat_result) -> tuple[str, str]:
     """An ETag and Last-Modified for a rendered tile.
 
     Derived from the file's modification time and size, which is what changes
     when a tile is re-rendered - and cheap, because the stat has to happen
-    anyway to know the file is there.
+    anyway to know the file is there. Taken from the open file rather than the
+    path, so the validators and the bytes sent with them are one file's.
     """
-    stat = path.stat()
     tag = hashlib.md5(
         f"{stat.st_mtime_ns}-{stat.st_size}".encode(), usedforsecurity=False
     ).hexdigest()
@@ -750,17 +750,26 @@ def tile(
             f"{' and '.join(composite.KINDS)}.",
         )
 
+    # Opened once and read whole, rather than handed to FileResponse - which
+    # takes the size from a stat and then streams whatever the file holds by
+    # the time it gets there. A tile is a few kilobytes; one read is cheaper
+    # than a body that can disagree with its own Content-Length. A tile deleted
+    # between the listing and the read is unexplored ground, like any other.
     path = composite.tile_path(tiles_root(), theme, view, kind, z, x, y)
-    if path.is_file():
-        etag, last_modified = tile_validators(path)
-        headers = {
-            "Cache-Control": TILE_CACHE_CONTROL,
-            "ETag": etag,
-            "Last-Modified": last_modified,
-        }
-        if unchanged(request, etag, last_modified):
-            return Response(status_code=304, headers=headers)
-        return FileResponse(path, media_type="image/png", headers=headers)
+    try:
+        with path.open("rb") as handle:
+            etag, last_modified = tile_validators(os.fstat(handle.fileno()))
+            headers = {
+                "Cache-Control": TILE_CACHE_CONTROL,
+                "ETag": etag,
+                "Last-Modified": last_modified,
+            }
+            if unchanged(request, etag, last_modified):
+                return Response(status_code=304, headers=headers)
+            content = handle.read()
+        return Response(content=content, media_type="image/png", headers=headers)
+    except (FileNotFoundError, IsADirectoryError):
+        pass
 
     # Not a miss in the usual sense. Ground nobody has visited is not missing
     # data, it is unexplored, and unexplored ground is solid fog.

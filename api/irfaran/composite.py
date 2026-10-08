@@ -746,6 +746,27 @@ def encode_png(rgba: np.ndarray) -> bytes:
     return buffer.getvalue()
 
 
+def write_tile(destination: Path, data: bytes) -> None:
+    """Put a tile on disk in one step, so nobody can read half of one.
+
+    `write_bytes` empties the file and then fills it, and the server is
+    reading these while the queue writes them - a tile in view is exactly the
+    tile a stroke re-renders. A read in that moment got the length of one file
+    and the body of another, the connection was cut mid-response, and the map
+    reported "NetworkError (0)" while drawing. Written beside the tile and
+    renamed over it instead: a reader that already has the old file open keeps
+    reading the old file, and any other gets the new one whole.
+    """
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    temporary = destination.with_name(f".{destination.name}.{os.getpid()}.tmp")
+    try:
+        temporary.write_bytes(data)
+        os.replace(temporary, destination)
+    except BaseException:
+        temporary.unlink(missing_ok=True)
+        raise
+
+
 def tile_path(
     root: Path, theme: str, view: str, kind: str, zoom: int, x: int, y: int
 ) -> Path:
@@ -789,7 +810,7 @@ def write_placeholders(
         for kind in KINDS:
             destination = root / theme / f"empty-{kind}.png"
             destination.parent.mkdir(parents=True, exist_ok=True)
-            destination.write_bytes(placeholder_tile(theme, kind, conn))
+            write_tile(destination, placeholder_tile(theme, kind, conn))
             written.append(destination)
     return written
 
@@ -887,8 +908,7 @@ def render_deep(
                         if kind == "fog"
                         else render_trail(trail, theme, ramp)
                     )
-                    destination.parent.mkdir(parents=True, exist_ok=True)
-                    destination.write_bytes(encode_png(rgba))
+                    write_tile(destination, encode_png(rgba))
                     written += 1
 
     return written, kept
@@ -1013,8 +1033,7 @@ def render_shallow(
                     if kind == "fog"
                     else render_trail(trail, theme, ramp, grow_px=trail_grow(zoom))
                 )
-                destination.parent.mkdir(parents=True, exist_ok=True)
-                destination.write_bytes(encode_png(rgba))
+                write_tile(destination, encode_png(rgba))
                 written += 1
 
         # Deliberately the untouched arrays: the level above folds these, and

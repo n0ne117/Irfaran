@@ -11,6 +11,13 @@ Entries are written for someone reading the release page, not for someone readin
 
 Nothing yet.
 
+## [0.19.18] - 2026-10-08
+
+### Fixed
+- **"Map problem: AJAXError: NetworkError (0)" while drawing.** A stroke re-renders the tiles on screen, and the map is fetching those same tiles at the same moment. Each tile was rewritten in place — the file emptied, then filled — and served by taking its size first and streaming it afterwards, so a request that landed in between was promised one length and sent another, and the connection was cut. Status 0 is the browser saying no answer arrived at all.
+
+  Tiles are now written beside themselves and renamed into place in one step, so a reader gets the old tile whole or the new one whole and never half of either. And a tile is read in one go from a single open file, so its length, its ETag and its bytes always describe the same file. A tile removed between the two is served as unexplored ground, like any tile that does not exist.
+
 ## [0.19.17] - 2026-10-07
 
 ### Added
