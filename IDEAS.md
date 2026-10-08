@@ -865,3 +865,35 @@ and the rule that they never land unless chosen - all for points the phone
 itself said were unreliable. Since 0.19.13 to 0.19.17 the review can remove,
 move and draw, which repairs the same days from the other side: what the
 phone got right stays, and what it missed is drawn.
+
+## Not doing: following the railway across a gap
+
+A *Follow the railway* button on a gap in the review: route along the rail
+lines in the basemap from the last good fix to the first, and offer the result
+as a drawn line. Measured against a real planet basemap (Protomaps 4.15) and two
+real train gaps of about 20 km before deciding, so the numbers are here if it
+comes back:
+
+- Rail is in `roads` as `kind=rail`, with `kind_detail` telling main line from
+  tram, subway and miniature. Only z14 routes. At z12 and z13 the network
+  stays in dozens of pieces whatever the stitching.
+- Tile pieces overlap at the seams instead of sharing an endpoint, so
+  merging identical vertices leaves 180-440 components. Attaching each loose
+  end to the nearest rail line within 5-15 m brings it down to a handful,
+  and both gaps routed.
+- 165-192 tiles and 3.3 MB per gap over HTTP in about 3 s. Building the graph
+  and finding the route took about 0.3 s in pure Python.
+- Both routes came out 2-3 km longer than the straight line at 46 and 54
+  km/h, with no doubling back. The few coarse fixes the phone did send inside
+  each gap lay 14-66 m from the route.
+- On a stretch that was well recorded, good fixes sat a median 26 m off the
+  route, probably on the parallel track. A train standing in a station had its
+  two ends snapped to different parallel tracks and routed a 600 m detour
+  between points 20 m apart.
+- `pmtiles.Archive.tile()` walks every entry in order. Looking up single tiles
+  would need a proper directory search.
+
+Decided against, though it works: the GPX for a train ride is easier to
+produce with an external routing tool and import, and the phone is better
+left off on a train than repaired afterwards. The review can still remove,
+move and draw for the days that need it.
