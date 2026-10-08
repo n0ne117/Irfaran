@@ -850,3 +850,18 @@ route to take if "where is Vienna" is ever wanted.
 
 Dropped in favour of the tracker above. Asking one service that already holds
 your history beats one integration per vendor.
+
+## Not doing: keeping coarse fixes for the review
+
+Fixes worse than `IRFARAN_MAX_ACCURACY_M` (50 m) are dropped on arrival,
+before the holding pen, and not even counted. On a train with bad signal that
+is most of what the phone sent, so the review cannot show it. The idea was to
+hold them anyway, marked and hidden, and let a person pick out the ones that
+were right.
+
+Decided against as too much work for what it buys. It means a second class of
+fix in the pen, a count of what was dropped, a way to show and toggle them,
+and the rule that they never land unless chosen - all for points the phone
+itself said were unreliable. Since 0.19.13 to 0.19.17 the review can remove,
+move and draw, which repairs the same days from the other side: what the
+phone got right stays, and what it missed is drawn.
