@@ -11,6 +11,13 @@ Entries are written for someone reading the release page, not for someone readin
 
 Nothing yet.
 
+## [0.19.21] - 2026-11-19
+
+### Security
+- **FastAPI 0.115.6 → 0.165.0, and with it Starlette 0.41.3 → 1.10.0.** Starlette carried seven advisories at the old version, two of them high: a quadratic-time `Range` header in file responses, and form size limits that were silently ignored for url-encoded bodies. The `Host`-header one that reached the token gate was closed in the code in 0.19.19; this closes it underneath as well, and the rest with it. **uvicorn 0.34 → 0.54** comes along, since it is the server those two run in.
+
+  Fifty FastAPI releases and a Starlette major version, so the most likely of these to break something — and nothing did: the whole suite passes unchanged, and the running images were started and driven through nginx, an import rendered, a phone's delivery taken through the review and accepted. FastAPI now installs `opentelemetry-api` alongside itself; it sends nothing anywhere unless switched on, and it is not.
+
 ## [0.19.20] - 2026-11-19
 
 ### Security
