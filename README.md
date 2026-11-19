@@ -158,7 +158,7 @@ There's no custom app to install and no plugin. Each source is a small HTTP endp
 
 1. Install Overland and grant location permission **Always**.
 2. Settings → slide to unlock → Receiver Endpoint URL:
-   `http://irfaran.internal:8000/api/ingest/overland`
+   `http://irfaran.internal:8080/api/ingest/overland`
 3. Set the access token to your Irfaran token — Overland sends it as an `Authorization` header.
 4. Optionally set a Device ID.
 5. Choose *reduced* resolution limited by distance for a sane battery/detail trade-off. *Significant Location Only* uses almost no battery but yields neighbourhood-level dots rather than routes.
@@ -173,7 +173,7 @@ iOS does not let any app guarantee a collection interval. Overland's own documen
 [OwnTracks](https://owntracks.org/) works on iOS and Android and offers four monitoring modes.
 
 1. Install OwnTracks and open settings via the **i** icon, top left.
-2. Choose **HTTP** mode and set the URL to `http://irfaran.internal:8000/api/ingest/owntracks`.
+2. Choose **HTTP** mode and set the URL to `http://irfaran.internal:8080/api/ingest/owntracks`.
 3. Add the token through the `httpHeaders` setting (iOS only) as `X-Irfaran-Token:<token>`.
 4. Enable the OwnTracks toggle in Irfaran's settings.
 
@@ -190,7 +190,7 @@ No custom component needed. The Companion app already reports location to HA as 
 ```yaml
 rest_command:
   irfaran_point:
-    url: http://irfaran.internal:8000/api/ingest/ha
+    url: http://irfaran.internal:8080/api/ingest/ha
     method: POST
     headers:
       X-Irfaran-Token: !secret irfaran_token
@@ -304,7 +304,7 @@ the people registry, so `Ana & Bo` assigns both. A category that names no
 person can be mapped explicitly:
 
 ```bash
-curl -X PATCH localhost:8000/api/settings -H "X-Irfaran-Token: $IRFARAN_TOKEN" -H 'content-type: application/json' -d '{"pin_import_people": "{\"Everyone\": [\"Ana\", \"Bo\"]}"}'
+curl -X PATCH localhost:8080/api/settings -H "X-Irfaran-Token: $IRFARAN_TOKEN" -H 'content-type: application/json' -d '{"pin_import_people": "{\"Everyone\": [\"Ana\", \"Bo\"]}"}'
 ```
 
 Kept pins arrive minor, unlabelled, and in prehistory — the only date such a

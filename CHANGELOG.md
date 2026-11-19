@@ -11,6 +11,14 @@ Entries are written for someone reading the release page, not for someone readin
 
 Nothing yet.
 
+## [0.19.19] - 2026-11-19
+
+### Security
+- **A crafted `Host` header could walk a write past the token.** The four routes that check the token themselves — the phone deliveries and the basemap setup — were let through the gate by comparing `request.url.path`, and Starlette rebuilds that from the `Host` header ([GHSA-86qp-5c8j-p5mr](https://github.com/advisories/GHSA-86qp-5c8j-p5mr)). A `Host` of `x/api/ingest/overland?` made a request to anything else look like a phone's delivery: the router sent it where it was really going, and the gate never asked for the token. Shown against the previous code by a test before it was changed — all three variants got through. The gate now compares the path the router actually dispatches on.
+
+### Changed
+- **The production compose file no longer publishes the API's port.** The web container's nginx already forwards `/api/` to it, and with port 8000 open every request could skip the one layer that normalises the `Host` header. Phones, OwnTracks and Home Assistant are pointed at the web port in the README instead — same paths, `/api/ingest/...`. An existing install keeps the old port until its stack file is updated; nothing breaks either way.
+
 ## [0.19.18] - 2026-10-08
 
 ### Fixed

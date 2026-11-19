@@ -30,8 +30,10 @@ services:
     volumes:
       - ${IRFARAN_DATA_HOST:-${FOGMAP_DATA_HOST:-./data}}:/data:z
       - ${IRFARAN_BASEMAP_HOST:-${IRFARAN_DATA_HOST:-${FOGMAP_DATA_HOST:-./data}}}:/basemap:z
-    ports:
-      - "${IRFARAN_API_PORT:-${FOGMAP_API_PORT:-8000}}:8000"
+    # Not published. The web container's nginx forwards /api/ to it on the
+    # compose network, so nothing outside needs this port - and with it open,
+    # every request skipped the one layer that normalises the Host header.
+    # Point phones and Home Assistant at the web port, /api/ingest/...
     healthcheck:
       test:
         - CMD

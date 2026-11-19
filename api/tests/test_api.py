@@ -92,6 +92,28 @@ class TestTokenGate:
         response = client.post("/api/events", headers={"x-irfaran-token": TOKEN})
         assert response.status_code == 422
 
+    @pytest.mark.parametrize(
+        "host",
+        [
+            "irfaran/api/ingest/overland?",
+            "irfaran/api/ingest/overland#",
+            "irfaran/api/setup/basemap?",
+        ],
+    )
+    def test_a_host_header_cannot_borrow_an_exempt_path(self, client, monkeypatch, host):
+        """GHSA-86qp-5c8j-p5mr: request.url is rebuilt from the Host header.
+
+        A few paths check their own token and are let past the gate by path.
+        Comparing request.url.path, a Host of "x/api/ingest/overland?" made a
+        DELETE of anything look like a delivery from a phone - routed by the
+        real path, waved through by the poisoned one. The API port is published
+        on the network with no proxy in front to normalise the header.
+        """
+        monkeypatch.setenv("IRFARAN_TOKEN", TOKEN)
+        response = client.post("/api/events", headers={"Host": host})
+        assert response.status_code == 401
+        assert "Missing X-Irfaran-Token header" in response.json()["detail"]
+
     @pytest.mark.parametrize("path", ["/healthz", "/api/meta"])
     def test_reads_never_need_a_token(self, client, monkeypatch, path):
         monkeypatch.setenv("IRFARAN_TOKEN", TOKEN)

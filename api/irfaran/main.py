@@ -359,7 +359,11 @@ async def require_token_on_mutations(request: Request, call_next):
     """
     if request.method not in MUTATING_METHODS:
         return await call_next(request)
-    if request.url.path in SELF_GUARDED_PATHS:
+    # The path the router will dispatch on, not request.url.path: that one is
+    # rebuilt from the Host header, and a Host of "x/api/ingest/overland?" made
+    # any write look like a phone's delivery and walk past the token
+    # (GHSA-86qp-5c8j-p5mr). Measured against this code before it was changed.
+    if request.scope["path"] in SELF_GUARDED_PATHS:
         return await call_next(request)
 
     failure = token_error(request)

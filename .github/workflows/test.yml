@@ -43,6 +43,33 @@ jobs:
       - name: Run the test suite
         run: docker compose run --rm --build test
 
+  # The images themselves, started and driven through nginx with an empty data
+  # directory: a passing suite does not prove the container starts, that
+  # nginx takes its config, or that a phone's delivery lands. This is the gate
+  # the dependency upgrades are released through.
+  smoke:
+    name: Smoke test the running stack
+    runs-on: ubuntu-latest
+    env:
+      IRFARAN_TOKEN: smoke-test-token
+    steps:
+      - uses: actions/checkout@v4
+
+      # An empty data directory of its own, never ./data. The runner context
+      # is not available to job-level env, so it is set here for every step.
+      - name: Start the stack
+        run: |
+          echo "IRFARAN_DATA_HOST=$RUNNER_TEMP/smoke-data" >> "$GITHUB_ENV"
+          mkdir -p "$RUNNER_TEMP/smoke-data"
+          IRFARAN_DATA_HOST="$RUNNER_TEMP/smoke-data" docker compose up -d --build api web
+
+      - name: Drive it
+        run: python3 scripts/smoke.py http://127.0.0.1:8080 http://127.0.0.1:8000 "$IRFARAN_TOKEN"
+
+      - name: What the containers said
+        if: always()
+        run: docker compose logs --no-color --tail=200 api web
+
   # The test image reads the TypeScript but never compiles it; `tsc --noEmit`
   # only runs inside the web image build, which release.yml reaches after the
   # tests have already passed.
