@@ -4,10 +4,15 @@
 // Fog is opaque where the ground is unexplored, so it has to be drawn last.
 
 import { layers, namedFlavor } from '@protomaps/basemaps'
-import { Map as MapLibreMap, ScaleControl, addProtocol } from 'maplibre-gl'
+import { Map as MapLibreMap, ScaleControl, addProtocol, setWorkerUrl } from 'maplibre-gl'
+// MapLibre 6 finds its worker beside its own module, which after bundling is
+// beside nothing: the basemap stopped drawing - roads and names gone, fog and
+// tracks still there - with "Worker failed to load" in the console. Imported
+// as a URL, the bundler emits the worker and names the file it emitted.
+import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url'
 import type {
-  DataDrivenPropertyValueSpecification,
   MapOptions as MapLibreMapOptions,
+  PropertyValueSpecification,
 } from 'maplibre-gl'
 import { PMTiles, Protocol } from 'pmtiles'
 
@@ -100,7 +105,7 @@ export function setHeatOpacity(map: MapLibreMap, opacity: number): void {
  * style invalid, and an invalid style is rejected whole - basemap, fog and
  * trails all at once, with nothing on screen to say why.
  */
-function heatFade(): DataDrivenPropertyValueSpecification<number> {
+function heatFade(): PropertyValueSpecification<number> {
   const strength = getHeatOpacity()
   return [
     'interpolate',
@@ -468,6 +473,7 @@ export function createMap(setup: MapSetup): MapLibreMap {
   if (!protocolRegistered) {
     // This is how MapLibre learns to read a pmtiles:// url.
     addProtocol('pmtiles', pmtilesProtocol.tile)
+    setWorkerUrl(workerUrl)
     protocolRegistered = true
   }
 

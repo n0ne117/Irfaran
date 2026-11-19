@@ -1083,6 +1083,21 @@ class TestMovingAPointOnTheMap:
         assert "this.moves.delete(index)" in body
 
 
+class TestMapLibresWorkerIsFound:
+    """MapLibre 6 looks for its worker beside its own module file, and after
+    bundling there is nothing there: the basemap stopped drawing - roads and
+    names gone, fog and tracks still on screen - and the console said "Worker
+    failed to load". Found in a browser before release, not by any test."""
+
+    def test_the_worker_is_imported_as_a_url(self) -> None:
+        text = source("map.ts")
+        assert "from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url'" in text
+
+    def test_it_is_handed_to_maplibre_before_a_map_exists(self) -> None:
+        body = body_of(source("map.ts"), "export function createMap(")
+        assert body.index("setWorkerUrl(workerUrl)") < body.index("new MapLibreMap(")
+
+
 class TestALineLongerThanTheScreen:
     """Point to point used to switch panning off from the first vertex to the
     last, so the screen was the longest line that could be drawn. A train ride

@@ -19,6 +19,7 @@ Standard library only, so CI needs nothing installed for it.
 from __future__ import annotations
 
 import json
+import re
 import struct
 import sys
 import time
@@ -137,6 +138,19 @@ def main() -> None:
         kind = headers.get("content-type", "")
         expected = "javascript" if asset.endswith(".js") else "css" if asset.endswith(".css") else ""
         ok(status == 200 and expected in kind, f"/assets/{asset} is {kind}")
+    # MapLibre runs its tile parsing in a module worker, loaded by URL from the
+    # bundle. A browser refuses a module script served as anything but
+    # JavaScript - and then the basemap is simply not drawn, with no request
+    # failing - so the content type nginx gives it is checked here.
+    bundle = next(a for a in assets if a.endswith(".js"))
+    script = call("GET", f"{WEB}/assets/{bundle}")[2].decode("utf-8", "replace")
+    # The hashed name the bundler emitted, not MapLibre's own defaults
+    # (maplibre-gl-worker.mjs, -dev.mjs), which are also in the bundle.
+    workers = sorted(set(re.findall(r"maplibre-gl-worker-[A-Za-z0-9_-]{8}\.mjs", script)))
+    ok(len(workers) == 1, f"the bundle names the worker it emitted ({workers})")
+    status, headers, _ = call("GET", f"{WEB}/assets/{workers[0]}")
+    ok(status == 200 and "javascript" in headers.get("content-type", ""),
+       f"the worker is served as JavaScript ({headers.get('content-type')})")
     status, headers, _ = call("GET", f"{WEB}/manifest.webmanifest")
     ok(status == 200 and headers.get("content-type") == "application/manifest+json",
        "the manifest is served as one")

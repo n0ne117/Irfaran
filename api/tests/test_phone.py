@@ -197,6 +197,17 @@ class TestAddedToTheHomeScreen:
         assert not re.search(r"^\s*types\s*\{", conf, re.M)
 
 
+    def test_maplibres_worker_is_served_as_javascript(self) -> None:
+        # nginx has no type for .mjs, and a browser will not start a module
+        # worker sent as octet-stream: no basemap. Caught by the smoke job.
+        conf = (WEB / "nginx.conf").read_text()
+        assets = conf[conf.index("location /assets/ {") :]
+        block = assets[assets.index("location ~ \\.mjs$ {") :]
+        block = block[: block.index("}")]
+        assert "default_type text/javascript;" in block
+        assert "immutable" in block
+
+
 class TestWhatWasTakenAway:
     def test_the_version_corner_is_hidden_but_not_lost(self) -> None:
         # Four things already want the bottom edge. The version is still on

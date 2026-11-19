@@ -11,6 +11,18 @@ Entries are written for someone reading the release page, not for someone readin
 
 Nothing yet.
 
+## [0.19.22] - 2026-11-19
+
+### Security
+- **MapLibre GL JS 5.24 → 6.19**, for a critical advisory: its HTML sanitizer could be bypassed ([GHSA-jrc7-96c5-q579](https://github.com/advisories/GHSA-jrc7-96c5-q579)), fixed only in the 6 line. Irfaran writes its own popups and styles, so it was hard to reach, but there was no 5.x release to stay on.
+
+### Changed
+- **MapLibre now loads its worker from a file the build emits.** Version 6 looks for the worker beside its own module, and after bundling nothing is there — the basemap stopped drawing, roads and place names gone while the fog and tracks stayed, and the console said "Worker failed to load". That was found by running the new build in a browser against the live archive before release, not by a test; it is a test now, and the running images are checked for the worker being served as JavaScript, which a browser insists on before it will start one.
+- **nginx serves `.mjs` as JavaScript.** It has no type for the extension, so the worker above went out as `application/octet-stream`, and a browser will not start a module worker sent as that: the same missing basemap, by a second route. The local test had not shown it, because the server there knew the type; the running images did, through nginx, on their first run.
+
+### Note
+**Checked in a browser, side by side with the previous build, before release.** The same view in both: the same requests for the same tiles, basemap, fonts and sprites, the same picture, no console messages. A pin's popup opens. On the globe, pins on the far side are hidden in both. A theme switch rebuilds the map. And the review, which leans hardest on the map library, was driven end to end against a synthetic batch: a point selected and removed, a point dragged without the map panning under it, a line drawn whose ends landed exactly on the points either side of the gap.
+
 ## [0.19.21] - 2026-11-19
 
 ### Security
