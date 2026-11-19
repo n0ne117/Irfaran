@@ -11,6 +11,19 @@ Entries are written for someone reading the release page, not for someone readin
 
 Nothing yet.
 
+## [0.19.20] - 2026-11-19
+
+### Security
+- **nginx moves from the 1.27 line to the 1.30 stable line (1.30.7).** 1.27 has had no fixes since spring 2025 and sits inside the range affected by NGINX2Shell (CVE-2026-123007) and its companion CVE-2026-123633. Irfaran's own nginx was never exposed to those — it speaks plain HTTP/1.1 and both need HTTP/2 — but a server branch nobody patches is not a place to stay. A reverse proxy in front of Irfaran that does speak HTTP/2 is a separate matter, and needs its own update.
+- **python-multipart 0.0.20 → 0.0.34**, for seven advisories: unbounded part headers, a large preamble or epilogue, quadratic query-string parsing, parameter smuggling, a negative Content-Length, and an arbitrary file write in a configuration Irfaran does not use. All of them sit behind the token, which a multipart upload needs before anything is parsed.
+- **Pillow 11.1 → 13.0**, which closes some ninety advisories in its image decoders. Irfaran never opens an image file from outside — it only writes PNGs it drew itself — so none of them was reachable, but they are no longer there to become reachable. A tile may come out a few bytes different from before; every rebuild is still byte-identical with itself.
+- **lxml 5.3 → 6.1.3.** The one advisory, an XXE through `iterparse()` and `ETCompatXMLParser`, did not apply — TCX is parsed with entities and the network both switched off — but the parser underneath is newer.
+- **vite 6.0.7 → 6.4.6**, for eighteen advisories in its development server, which Irfaran never runs: it is only ever used to build. Same major version, so the build is unchanged.
+- **pytest 8 → 9**, test-only, for a temporary-directory advisory.
+
+### Note
+**The images were started and driven before release**, not only tested: CI now brings up the real api and web images on an empty data directory and works them through nginx — the page and its assets, an import rendered to tiles, a phone's delivery through the review with a point removed, a point moved and a line drawn, the token refusing a write. Thirty-four checks, and every upgrade from here goes out through them.
+
 ## [0.19.19] - 2026-11-19
 
 ### Security
